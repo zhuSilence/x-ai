@@ -1,0 +1,42 @@
+[project]
+name = "twitter-scraper"
+version = "0.1.0"
+description = "Twitter推文爬取工具 - 自动爬取指定用户最近推文信息"
+readme = "README_twitter_scraper.md"
+requires-python = ">=3.8"
+dependencies = [
+    "tweepy>=4.14.0",
+    "pandas>=1.5.0",
+]
+authors = [
+    {name = "Twitter Scraper", email = "example@example.com"}
+]
+license = {text = "MIT"}
+keywords = ["twitter", "scraper", "social-media", "data-collection"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.scripts]
+twitter-scraper = "twitter_scraper:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=6.0",
+    "black>=22.0",
+    "flake8>=4.0",
+    "mypy>=1.0",
+]
