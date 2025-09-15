@@ -2,11 +2,17 @@
 # 每行一个用户名，不需要@符号
 # 以#开头的行为注释，会被忽略
 # 空行会被忽略
+#
+# 频次限制说明:
+# 脚本已增加自动频次控制，每次API请求间隔1秒
+# 可通过环境变量 TWITTER_RATE_DELAY 调整间隔时间(秒)
+# 推荐设置: 1.0-2.0秒，避免被Twitter API限制
+#
+# 使用方法:
+# export TWITTER_RATE_DELAY=1.5  # 设置1.5秒间隔
+# python twitter_scraper.py
 
 elonmusk
-sundarpichai
-tim_cook
-satyanadella
 
 # 可以继续添加更多用户名
 # 例如:
