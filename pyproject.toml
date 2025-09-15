@@ -9,7 +9,7 @@ dependencies = [
     "pandas>=1.5.0",
 ]
 authors = [
-    {name = "Twitter Scraper", email = "example@example.com"}
+    {name = "Twitter Scraper", email = "your-email@example.com"}
 ]
 license = {text = "MIT"}
 keywords = ["twitter", "scraper", "social-media", "data-collection"]
