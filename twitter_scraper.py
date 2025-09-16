@@ -3,16 +3,14 @@
 """
 Twitter推文爬取脚本
 自动爬取指定用户最近一天的推文信息，支持WordPress自动发布
-整合所有功能到单一文件
 """
 
 import tweepy
-import pandas as pd
 import json
 from datetime import datetime, timedelta
 import os
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any, Union
 import threading
 import requests
 import base64
@@ -20,7 +18,7 @@ from urllib.parse import urljoin
 
 
 class WordPressPublisher:
-    """WordPress发布器 - 内嵌版本"""
+    """WordPress发布器"""
     
     def __init__(self, site_url: str, username: str, password: str):
         self.site_url = site_url.rstrip('/')
@@ -55,7 +53,7 @@ class WordPressPublisher:
     
     def create_post(self, title: str, content: str, status: str = 'draft', 
                    category_ids: Optional[List[int]] = None, tag_ids: Optional[List[int]] = None) -> Optional[Dict]:
-        post_data = {
+        post_data: Dict[str, Union[str, List[int]]] = {
             'title': title,
             'content': content,
             'status': status,
@@ -222,10 +220,6 @@ class WordPressPublisher:
             for i, tweet in enumerate(tweets):
                 # 创建文章标题
                 title = f"@{username} 的推文 - {tweet['created_at'][:10]}"
-                if len(tweet['text']) > 50:
-                    title += f" - {tweet['text'][:50]}..."
-                else:
-                    title += f" - {tweet['text']}"
                 
                 # 格式化内容
                 content = self.format_tweet_as_html(tweet, username)
@@ -311,7 +305,7 @@ class TwitterScraper:
     
     def get_tweets(self, usernames, days: int = 1) -> Dict[str, List[Dict]]:
         """
-        获取用户推文（支持单个或多个用户）
+        获取用户推文
         
         Args:
             usernames: 用户名（字符串）或用户名列表
@@ -346,7 +340,7 @@ class TwitterScraper:
     
     def _get_single_user_tweets(self, username: str, days: int = 1) -> List[Dict]:
         """
-        获取单个用户的推文（内部方法）
+        获取单个用户的推文
         
         Args:
             username: Twitter用户名（不包含@符号）
@@ -424,41 +418,12 @@ class TwitterScraper:
             print(f"🔄 当前延迟设置: {self.rate_limit_delay}秒")
             return []
     
-    # 保持向后兼容
-    def get_user_tweets(self, username: str, days: int = 1) -> List[Dict]:
+    def save_tweets(self, tweets_data, filename_prefix: str = 'tweets'):
         """
-        获取单个用户推文（兼容方法）
-        
-        Args:
-            username: Twitter用户名
-            days: 获取天数
-            
-        Returns:
-            推文列表
-        """
-        result = self.get_tweets(username, days)
-        return result.get(username, [])
-    
-    def get_multiple_users_tweets(self, usernames: List[str], days: int = 1) -> Dict[str, List[Dict]]:
-        """
-        获取多个用户推文（兼容方法）
-        
-        Args:
-            usernames: 用户名列表
-            days: 获取天数
-            
-        Returns:
-            推文字典
-        """
-        return self.get_tweets(usernames, days)
-    
-    def save_tweets(self, tweets_data, format_type: str = 'both', filename_prefix: str = 'tweets'):
-        """
-        保存推文数据（支持单个或多个用户）
+        保存推文数据为JSON格式
         
         Args:
             tweets_data: 推文数据（列表或字典格式）
-            format_type: 保存格式 ('csv', 'json', 'both')
             filename_prefix: 文件名前缀
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -487,90 +452,38 @@ class TwitterScraper:
         # 按时间排序
         combined_tweets.sort(key=lambda x: x['created_at'], reverse=True)
         
-        # 保存合并文件
-        if format_type in ['csv', 'both']:
-            if is_single_user:
-                filename = f"{filename_prefix}_{timestamp}.csv"
-            else:
-                filename = f"{filename_prefix}_multiple_users_{timestamp}.csv"
-            
-            df = pd.DataFrame(combined_tweets)
-            if not is_single_user:
-                # 调整列顺序，将username放在前面
-                cols = ['username'] + [col for col in df.columns if col != 'username']
-                df = df[cols]
-            df.to_csv(filename, index=False, encoding='utf-8-sig')
-            print(f"📄 CSV文件已保存: {filename}")
+        if is_single_user:
+            filename = f"{filename_prefix}_{timestamp}.json"
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(combined_tweets, f, ensure_ascii=False, indent=2)
+            print(f"📄 JSON文件已保存: {filename}")
+        else:
+            filename = f"{filename_prefix}_multiple_users_{timestamp}.json"
+            output_data = {
+                'timestamp': timestamp,
+                'total_users': len(tweets_data),
+                'total_tweets': len(combined_tweets),
+                'users_data': tweets_data,
+                'combined_tweets': combined_tweets
+            }
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(output_data, f, ensure_ascii=False, indent=2)
+            print(f"📄 详细JSON文件已保存: {filename}")
         
-        if format_type in ['json', 'both']:
-            if is_single_user:
-                filename = f"{filename_prefix}_{timestamp}.json"
-                with open(filename, 'w', encoding='utf-8') as f:
-                    json.dump(combined_tweets, f, ensure_ascii=False, indent=2)
-                print(f"📄 JSON文件已保存: {filename}")
-            else:
-                filename = f"{filename_prefix}_multiple_users_{timestamp}.json"
-                output_data = {
-                    'timestamp': timestamp,
-                    'total_users': len(tweets_data),
-                    'total_tweets': len(combined_tweets),
-                    'users_data': tweets_data,
-                    'combined_tweets': combined_tweets
-                }
-                with open(filename, 'w', encoding='utf-8') as f:
-                    json.dump(output_data, f, ensure_ascii=False, indent=2)
-                print(f"📄 详细JSON文件已保存: {filename}")
-        
-        # 为每个用户单独保存文件（多用户模式）
+        # 为每个用户单独保存JSON文件
         if not is_single_user:
             for username, tweets in tweets_data.items():
                 if tweets:
-                    if format_type in ['csv', 'both']:
-                        user_filename = f"{filename_prefix}_{username}_{timestamp}.csv"
-                        df = pd.DataFrame(tweets)
-                        df.to_csv(user_filename, index=False, encoding='utf-8-sig')
-                    
-                    if format_type in ['json', 'both']:
-                        user_filename = f"{filename_prefix}_{username}_{timestamp}.json"
-                        with open(user_filename, 'w', encoding='utf-8') as f:
-                            json.dump(tweets, f, ensure_ascii=False, indent=2)
+                    user_filename = f"{filename_prefix}_{username}_{timestamp}.json"
+                    with open(user_filename, 'w', encoding='utf-8') as f:
+                        json.dump(tweets, f, ensure_ascii=False, indent=2)
             
-            print(f"📁 单独用户文件也已保存")
+            print(f"📁 单独用户JSON文件也已保存")
     
-    # 保持向后兼容的方法
-    def save_tweets_to_csv(self, tweets: List[Dict], filename: Optional[str] = None):
-        """保存推文为CSV（兼容方法）"""
-        if filename:
-            # 如果指定了文件名，使用传统方式保存
-            if not tweets:
-                print("没有推文数据可保存")
-                return
-            df = pd.DataFrame(tweets)
-            df.to_csv(filename, index=False, encoding='utf-8-sig')
-            print(f"推文已保存到: {filename}")
-        else:
-            self.save_tweets(tweets, format_type='csv')
-    
-    def save_tweets_to_json(self, tweets: List[Dict], filename: Optional[str] = None):
-        """保存推文为JSON（兼容方法）"""
-        if filename:
-            # 如果指定了文件名，使用传统方式保存
-            if not tweets:
-                print("没有推文数据可保存")
-                return
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(tweets, f, ensure_ascii=False, indent=2)
-            print(f"推文已保存到: {filename}")
-        else:
-            self.save_tweets(tweets, format_type='json')
-    
-    def save_multiple_users_tweets(self, all_tweets: Dict[str, List[Dict]], format_type: str = 'both'):
-        """保存多用户推文（兼容方法）"""
-        self.save_tweets(all_tweets, format_type=format_type, filename_prefix='tweets')
-    
+
     def print_summary(self, tweets_data):
         """
-        打印推文统计摘要（支持单个或多个用户）
+        打印推文统计摘要
         
         Args:
             tweets_data: 推文数据（列表或字典格式）
@@ -645,20 +558,12 @@ class TwitterScraper:
                 print(f"  每推文转发: {total_retweets_all/total_tweets_all:.1f}")
                 print(f"  每推文回复: {total_replies_all/total_tweets_all:.1f}")
     
-    # 保持向后兼容的方法
-    def print_tweets_summary(self, tweets: List[Dict]):
-        """打印推文摘要（兼容方法）"""
-        self.print_summary(tweets)
-    
-    def print_multiple_users_summary(self, all_tweets: Dict[str, List[Dict]]):
-        """打印多用户推文摘要（兼容方法）"""
-        self.print_summary(all_tweets)
-    
+
     def publish_to_wordpress(self, tweets_data, 
                            post_status: str = 'draft', 
                            category_name: str = 'Twitter推文') -> Optional[List[Dict]]:
         """
-        将获取的推文发布到WordPress（支持单个或多个用户）
+        将获取的推文发布到WordPress
         
         Args:
             tweets_data: 推文数据（列表或字典格式）
@@ -766,7 +671,7 @@ def load_users_from_config(config_file: str = 'users_config.txt') -> List[str]:
 
 def main():
     """
-    主函数 - 使用示例
+    主函数
     """
     # 配置参数
     BEARER_TOKEN = os.getenv('TWITTER_BEARER_TOKEN')  # 从环境变量获取
@@ -784,9 +689,6 @@ def main():
     
     # 从配置文件加载用户名
     USERNAMES = load_users_from_config('users_config.txt')
-    
-    # 也可以指定其他配置文件
-    # USERNAMES = load_users_from_config('custom_users.txt')
     
     DAYS = 1  # 获取最近几天的推文
     
@@ -845,14 +747,14 @@ def main():
         print("请检查 users_config.txt 文件并添加用户名")
         return
     
-    # 创建爬虫实例（带频次限制和WordPress配置）
+    # 创建爬虫实例
     scraper = TwitterScraper(
         BEARER_TOKEN, 
         rate_limit_delay=RATE_LIMIT_DELAY,
         wordpress_config=wordpress_config
     )
     
-    # 爬取推文（统一接口，支持单个或多个用户）
+    # 爬取推文
     print(f"🎯 目标用户: {', '.join(['@' + u for u in USERNAMES]) if isinstance(USERNAMES, list) else '@' + USERNAMES}")
     print(f"🕰️ 时间范围: 最近 {DAYS} 天")
     
@@ -863,7 +765,7 @@ def main():
         scraper.print_summary(all_tweets)
         
         # 保存推文数据
-        scraper.save_tweets(all_tweets, format_type='both')
+        scraper.save_tweets(all_tweets)
         
         # WordPress发布（如果启用）
         if PUBLISH_TO_WORDPRESS and scraper.wp_publisher:
@@ -881,7 +783,7 @@ def main():
                     json.dump(wp_results, f, ensure_ascii=False, indent=2)
                 print(f"💾 WordPress发布结果已保存到: {wp_results_file}")
         
-        # 显示最新推文预览（仅多用户模式）
+        # 显示最新推文预览（多用户模式）
         if isinstance(USERNAMES, list) and len(USERNAMES) > 1:
             print("\n" + "="*50)
             print("=== 各用户最新推文预览 ===")

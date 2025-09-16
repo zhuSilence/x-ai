@@ -6,7 +6,7 @@
 
 - 🐦 爬取指定用户最近1天（可配置）的推文
 - 📊 获取详细的推文数据（点赞、转发、回复数等）
-- 💾 支持保存为CSV和JSON格式
+- 💾 保存为JSON格式
 - 📈 提供推文统计摘要
 - 🔒 支持Twitter API v2
 - ⚡ 处理API限制和错误
@@ -154,25 +154,20 @@ python twitter_scraper.py
 ```python
 from twitter_scraper import TwitterScraper
 
-# 创建爬虫实例（带频次控制）
+# 创建爬虫实例
 scraper = TwitterScraper(
     bearer_token="你的Bearer Token",
     rate_limit_delay=1.5  # 每1.5秒一次请求
 )
 
-# 单用户模式
-tweets = scraper.get_user_tweets("elonmusk", days=1)
-scraper.save_tweets_to_csv(tweets, "tweets.csv")
-scraper.print_tweets_summary(tweets)
+# 获取推文（支持单个用户或多个用户）
+all_tweets = scraper.get_tweets(["elonmusk", "sundarpichai", "tim_cook"], days=1)
 
-# 多用户模式
-usernames = ["elonmusk", "sundarpichai", "tim_cook"]
-all_tweets = scraper.get_multiple_users_tweets(usernames, days=1)
+# 保存数据为JSON格式
+scraper.save_tweets(all_tweets)
 
-# 保存数据（包含合并文件和单独文件）
-scraper.save_multiple_users_tweets(all_tweets, format_type='both')
-# 显示统计
-scraper.print_multiple_users_summary(all_tweets)
+# 显示统计摘要
+scraper.print_summary(all_tweets)
 
 # WordPress发布（如果配置了）
 if scraper.wp_publisher:
@@ -185,7 +180,7 @@ if scraper.wp_publisher:
 
 ## 📊 输出数据格式
 
-### CSV/JSON字段说明
+### JSON字段说明
 - `id`: 推文唯一ID
 - `text`: 推文内容
 - `created_at`: 发布时间
@@ -200,9 +195,7 @@ if scraper.wp_publisher:
 ### 输出文件
 
 #### 推文数据文件
-- `tweets_multiple_users_YYYYMMDD_HHMMSS.csv`: 所有用户推文合并的CSV文件
-- `tweets_multiple_users_YYYYMMDD_HHMMSS.json`: 包含详细数据结构的JSON文件
-- `tweets_用户名_YYYYMMDD_HHMMSS.csv`: 每个用户的单独CSV文件
+- `tweets_multiple_users_YYYYMMDD_HHMMSS.json`: 所有用户推文合并的JSON文件
 - `tweets_用户名_YYYYMMDD_HHMMSS.json`: 每个用户的单独JSON文件
 
 #### WordPress发布文件
@@ -474,23 +467,22 @@ uv run python tests/test_wordpress_integration.py
 
 ### 测试内容
 - **模块化测试**: 验证代码结构和导入
-- **功能分离测试**: 确保各模块独立工作
+- **功能测试**: 确保各模块独立工作
 - **WordPress集成测试**: 测试WordPress连接和发布功能
-- **兼容性测试**: 验证向后兼容性
 
 ## 🚀 扩展功能
 
 ### 已实现功能
 - ✅ 多用户批量爬取
 - ✅ 智能频次控制和API限制处理
-- ✅ 自动文件命名和组织
+- ✅ JSON数据格式存储
 - ✅ 详细的统计报告
 - ✅ WordPress自动发布功能
 - ✅ 精美的HTML内容格式化
 - ✅ 灵活的环境变量配置
 - ✅ 时间范围优化（按天的起止时间）
 - ✅ 现代化uv包管理
-- ✅ 完整的测试套件
+- ✅ 流线型的代码结构
 
 ### 可以根据需要添加的功能
 - 支持关键词过滤推文内容
@@ -508,6 +500,6 @@ uv run python tests/test_wordpress_integration.py
 
 ---
 
-*项目最后更新: 2025-09-15*  
+*项目最后更新: 2025-09-16*  
 *Python版本: 3.11*  
 *uv版本: 0.8.17*
