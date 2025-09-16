@@ -1,6 +1,6 @@
 # Twitter推文爬取工具
 
-这是一个用于爬取Twitter指定用户最近推文的Python脚本，支持自动发布到WordPress站点，使用现代化的uv包管理器进行依赖管理。
+这是一个用于爬取Twitter指定用户最近推文的Python脚本，支持自动发布到WordPress站点，基于Twitter API v2官方文档实现了智能速率限制管理。
 
 ## 🚀 项目特性
 
@@ -9,8 +9,10 @@
 - 💾 保存为JSON格式
 - 📈 提供推文统计摘要
 - 🔒 支持Twitter API v2
-- ⚡ 处理API限制和错误
-- 🚀 智能频次控制，避免API被拦截
+- 🧠 **智能速率限制管理** - 基于官方文档的精确API限制控制
+- 📊 **多API等级支持** - Free/Basic/Pro/Enterprise自动适配
+- ⚡ **性能大幅提升** - 最高1350倍效率提升
+- 🛡️ **智能错误处理** - 429错误指数退避策略
 - 📝 WordPress自动发布功能
 - 🎨 精美的HTML格式化推文内容
 - ⚙️ 灵活的环境变量配置
@@ -32,12 +34,36 @@ x-ai/
 ├── config/                 # 配置目录
 │   └── users_config.txt    # 用户配置文件
 ├── tests/                  # 测试目录
-│   ├── test_refactoring.py
-│   └── test_wordpress_integration.py
+│   ├── run_tests.py        # 测试套件入口
+│   ├── test_rate_limit_manager.py  # 限流管理器测试
+│   └── test_wordpress_integration.py # WordPress集成测试
 └── README.md              # 项目文档（本文件）
 ```
 
-## 🛠 环境设置
+## 📈 性能对比与更新亮点
+
+### 效率提升对比
+
+**旧版本（固定延迟）**:
+- 固定10-15秒延迟
+- 浪费大量等待时间
+- 无法充分利用API配额
+
+**新版本（智能限流）**:
+- FREE: 18.75分钟间隔 (实际可用: 1/15分钟)
+- BASIC: 1.67分钟间隔 (实际可用: 10/15分钟) - **9倍**速度提升
+- PRO: 0.67秒间隔 (实际可用: 1500/15分钟) - **1350倍**速度提升
+
+### 🎆 新版本亮点
+
+- 🧠 **智能速率限制管理**: 基于官方文档的精确控制
+- 📊 **多等级支持**: Free/Basic/Pro/Enterprise 自动适配
+- 🛡️ **安全机制**: 可配置安全系数，防止触发限制
+- 🔄 **指数退避**: 遇到429错误时的智能重试
+- 📈 **实时监控**: 显示配额使用情况和剩余量
+- 🔄 **向后兼容**: 支持旧版本配置，平滑升级
+
+
 
 ### 安装uv包管理器
 
@@ -76,13 +102,41 @@ python twitter_scraper.py
 
 ## ⚙️ 配置说明
 
-### Twitter API配置
+## 🧠 智能速率限制管理
+
+基于 Twitter API v2 官方文档实现的高级限流管理系统，支持不同 API 等级的自动适配。
+
+### 🏷️ API等级配额对比
+
+| API等级 | 用户推文 (15分钟) | 用户信息 (时间窗口) | 效率提升 | 适用场景 |
+|-----------|-------------------|---------------------|----------|----------|
+| **FREE** | 1 | 1/24小时 | 基准 | 个人学习、小量测试 |
+| **BASIC** | 10 | 500/24小时 | **10倍** | 小规模应用 |
+| **PRO** | 1500 | 300/15分钟 | **1500倍** | 商业应用、大量爬取 |
+
+### ⚙️ 智能特性
+
+- 📊 **实时监控**: 显示请求配额使用情况和剩余配额
+- 🛡️ **安全系数机制**: 可调节安全边距，防止被限制
+- 🔄 **指数退避**: 遇到429错误时智能退避
+- ⏰ **精确时间窗口**: 基于官方文档的精确时间管理
+- 🔄 **向后兼容**: 支持旧版本固定延迟配置
 
 #### 方法1: 环境变量（推荐）
 ```bash
 # Twitter配置
 export TWITTER_BEARER_TOKEN="你的Bearer Token"
+<<<<<<< HEAD
 export TWITTER_RATE_DELAY="15.0"  # 可选，默认10.0秒
+=======
+
+# 🚀 新版本智能限流配置（推荐）
+export TWITTER_API_TIER="free"        # API等级: free/basic/pro/enterprise
+export TWITTER_SAFETY_FACTOR="0.8"    # 安全系数: 0.1-1.0（推荐0.8）
+
+# ⚠️ 向后兼容配置（仍支持，但建议使用新配置）
+# export TWITTER_RATE_DELAY="15.0"      # 传统固定延迟配置
+>>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
 
 # WordPress配置（可选）
 export PUBLISH_TO_WORDPRESS="true"
@@ -123,6 +177,11 @@ BEARER_TOKEN = "你的Bearer Token"  # 替换这里
 # 每行一个用户名，不需要@符号
 # 以#开头的行为注释
 
+# 🚀 新版本智能限流说明（基于官方API文档）
+# 支持自动根据API等级调整请求频率
+# export TWITTER_API_TIER=free        # free/basic/pro
+# export TWITTER_SAFETY_FACTOR=0.8    # 安全系数
+
 elonmusk
 sundarpichai
 tim_cook
@@ -158,10 +217,17 @@ python main.py
 ```python
 from src.twitter_scraper import TwitterScraper
 
-# 创建爬虫实例
+# 创建爬虫实例（新版本智能限流）
 scraper = TwitterScraper(
     bearer_token="你的Bearer Token",
-    rate_limit_delay=1.5  # 每1.5秒一次请求
+    api_tier="free",        # free/basic/pro/enterprise
+    safety_factor=0.8       # 安全系数 0.1-1.0
+)
+
+# 或使用传统配置（向后兼容）
+scraper_legacy = TwitterScraper(
+    bearer_token="你的Bearer Token",
+    rate_limit_delay=15.0   # 固定延迟时间
 )
 
 # 获取推文（支持单个用户或多个用户）
@@ -172,6 +238,9 @@ scraper.save_tweets(all_tweets)
 
 # 显示统计摘要
 scraper.print_summary(all_tweets)
+
+# 显示速率限制状态（新功能）
+scraper.rate_manager.print_status_summary()
 
 # WordPress发布（如果配置了）
 if scraper.wp_publisher:
@@ -221,7 +290,42 @@ if scraper.wp_publisher:
 
 ## 🚀 高级功能
 
-### 1. 智能频次控制
+### 1. 🚀 智能速率限制管理（新功能）
+基于 Twitter API 官方文档的智能限流管理器，支持不同 API 等级的自动适配。
+
+**主要特性：**
+- 🏷️ **自动API等级识别**: 支持 Free/Basic/Pro/Enterprise 四个等级
+- 🛡️ **安全系数机制**: 可调节安全边距，防止被限制
+- 📊 **实时监控**: 显示请求配额使用情况和剩余配额
+- 🔄 **指数退避**: 遇到限制时智能退避
+- ⏰ **精确时间窗口**: 基于官方文档的精确时间管理
+
+**API等级配额对比：**
+
+| API等级 | 用户推文 | 用户信息 | 推荐安全系数 | 适用场景 |
+|-----------|------------|------------|----------------|-----------|
+| **FREE** | 1请求/15分钟 | 1请求/24小时 | 0.8 | 个人学习、小量测试 |
+| **BASIC** | 10请求/15分钟 | 500请求/24小时 | 0.9 | 小规模应用 |
+| **PRO** | 1500请求/15分钟 | 300请求/15分钟 | 0.9 | 商业应用、大量爬取 |
+
+**配置示例：**
+```bash
+# 新手推荐（最稳定）
+export TWITTER_API_TIER="free"
+export TWITTER_SAFETY_FACTOR="0.8"
+
+# 小规模商用
+export TWITTER_API_TIER="basic"
+export TWITTER_SAFETY_FACTOR="0.9"
+
+# 大规模应用
+export TWITTER_API_TIER="pro"
+export TWITTER_SAFETY_FACTOR="0.9"
+```
+
+### 2. 传统频次控制（向后兼容）
+仍支持传统的固定延迟配置，但建议迁移到新的智能限流系统。
+
 - 自动控制API请求间隔，避免被Twitter限制
 - 支持自定义延迟时间
 - 线程安全的请求同步机制
@@ -248,7 +352,7 @@ export TWITTER_RATE_DELAY=10.0
 export TWITTER_RATE_DELAY=15.0
 ```
 
-### 2. WordPress自动发布
+### 3. WordPress自动发布
 - 支持将推文自动发布到WordPress站点
 - 精美的HTML格式化内容
 - 自动创建和管理分类
@@ -271,12 +375,12 @@ export TWITTER_RATE_DELAY=15.0
 2. **用户名和密码**: 直接使用账户密码（不推荐生产环境）
 3. **JWT令牌**: 需要插件支持（高级用户）
 
-### 3. 时间范围优化
+### 4. 时间范围优化
 - 使用一天的开始和结束时间（00:00:00 - 23:59:59）
 - 而非简单的24小时倒推
 - 更准确的时间范围控制
 
-### 4. 灵活配置
+### 5. 灵活配置
 - 支持环境变量配置
 - 用户配置文件支持
 - 详细的错误处理和提示
@@ -416,14 +520,39 @@ uv sync --verbose
 ### 常见错误
 1. **401 Unauthorized**: 检查Bearer Token是否正确
 2. **403 Forbidden**: 用户可能受保护或不存在
+<<<<<<< HEAD
 3. **429 Too Many Requests**: API请求过于频繁，尝试增加 `TWITTER_RATE_DELAY` 值至15.0或更高
+=======
+3. **429 Too Many Requests**: API请求过于频繁
+   - 新版本：尝试降低 `TWITTER_SAFETY_FACTOR` 至 0.6-0.7
+   - 或者升级到更高等级的API计划
+   - 传统方式：增加 `TWITTER_RATE_DELAY` 值至15.0或更高
+>>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
 4. **用户不存在**: 检查用户名是否正确（不包含@符号）
 5. **WordPress连接失败**: 检查站点URL、用户名和密码是否正确
 
-### 频次限制问题
+### 智能限流配置建议
+
 如果遇到频次限制错误：
+
+**新版本解决方案（推荐）**:
 ```bash
+# 降低安全系数（更保守）
+export TWITTER_SAFETY_FACTOR="0.7"
+# 或更严格
+export TWITTER_SAFETY_FACTOR="0.5"
+
+# 考虑升级API计划
+export TWITTER_API_TIER="basic"  # 或 pro
+```
+
+**传统方式（向后兼容）**:
+```bash
+<<<<<<< HEAD
 # 增加延迟时间（新默认推荐）
+=======
+# 增加延迟时间
+>>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
 export TWITTER_RATE_DELAY="15.0"
 # 或更保守的设置
 export TWITTER_RATE_DELAY="20.0"
@@ -457,28 +586,36 @@ export TWITTER_RATE_DELAY="20.0"
 
 ## 🧪 测试
 
-项目包含完整的测试套件，位于 `tests/` 目录：
+项目包含完整的测试套件，位于 `tests/` 目录。
 
 ### 运行测试
 ```bash
 # 运行所有测试
-uv run pytest
+cd tests && python run_tests.py
+
+# 或使用uv
+uv run python tests/run_tests.py
 
 # 运行特定测试
-uv run python tests/test_refactoring.py
-uv run python tests/test_wordpress_integration.py
+python tests/test_rate_limit_manager.py
+python tests/test_wordpress_integration.py
 ```
 
 ### 测试内容
-- **模块化测试**: 验证代码结构和导入
-- **功能测试**: 确保各模块独立工作
+- **限流管理器测试**: 验证速率限制管理器功能
+- **功能演示**: 展示不同API等级的配置效果
 - **WordPress集成测试**: 测试WordPress连接和发布功能
+- **模块化测试**: 确保代码结构和导入正确
 
 ## 🚀 扩展功能
 
 ### 已实现功能
 - ✅ 多用户批量爬取
-- ✅ 智能频次控制和API限制处理
+- ✅ 🚀 基于Twitter API官方文档的智能速率限制管理
+- ✅ 支持Free/Basic/Pro/Enterprise四个 API等级
+- ✅ 安全系数机制和指数退避策略
+- ✅ 实时速率限制监控和状态显示
+- ✅ 向后兼容的传统频次控制
 - ✅ JSON数据格式存储
 - ✅ 详细的统计报告
 - ✅ WordPress自动发布功能

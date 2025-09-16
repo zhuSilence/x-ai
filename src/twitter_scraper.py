@@ -15,6 +15,228 @@ import threading
 import requests
 import base64
 from urllib.parse import urljoin
+from dataclasses import dataclass
+from enum import Enum
+import logging
+from collections import defaultdict, deque
+
+
+class TwitterAPITier(Enum):
+    """Twitter API 计划等级"""
+    FREE = "free"
+    BASIC = "basic"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
+
+
+@dataclass
+class RateLimit:
+    """速率限制配置"""
+    requests_per_window: int  # 时间窗口内请求数
+    window_minutes: int  # 时间窗口（分钟）
+    is_per_user: bool = False  # 是否按用户计算
+    is_per_app: bool = True   # 是否按应用计算
+    
+    @property
+    def window_seconds(self) -> int:
+        return self.window_minutes * 60
+    
+    @property
+    def min_interval(self) -> float:
+        """最小请求间隔（秒）"""
+        return self.window_seconds / self.requests_per_window
+
+
+class TwitterRateLimitManager:
+    """Twitter API 速率限制管理器"""
+    
+    # API v2 速率限制配置（基于官方文档）
+    RATE_LIMITS = {
+        TwitterAPITier.FREE: {
+            'get_user': RateLimit(1, 24 * 60, is_per_user=True),  # 1/24h per user
+            'get_users_tweets': RateLimit(1, 15, is_per_user=True),  # 1/15min per user
+            'search_recent': RateLimit(1, 15, is_per_user=True),  # 1/15min per user
+        },
+        TwitterAPITier.BASIC: {
+            'get_user': RateLimit(500, 24 * 60, is_per_app=True),  # 500/24h per app
+            'get_users_tweets': RateLimit(10, 15, is_per_app=True),  # 10/15min per app  
+            'search_recent': RateLimit(60, 15, is_per_app=True),  # 60/15min per app
+        },
+        TwitterAPITier.PRO: {
+            'get_user': RateLimit(300, 15, is_per_app=True),  # 300/15min per app
+            'get_users_tweets': RateLimit(1500, 15, is_per_app=True),  # 1500/15min per app
+            'search_recent': RateLimit(450, 15, is_per_app=True),  # 450/15min per app
+        }
+    }
+    
+    def __init__(self, api_tier: TwitterAPITier = TwitterAPITier.FREE, 
+                 safety_factor: float = 0.8, enable_monitoring: bool = True):
+        """
+        初始化速率限制管理器
+        
+        Args:
+            api_tier: API 计划等级
+            safety_factor: 安全系数，降低实际请求频率以避免限制
+            enable_monitoring: 是否启用请求监控
+        """
+        self.api_tier = api_tier
+        self.safety_factor = safety_factor
+        self.enable_monitoring = enable_monitoring
+        
+        # 请求时间记录 {endpoint: deque of timestamps}
+        self.request_history: Dict[str, deque] = defaultdict(lambda: deque())
+        
+        # 锁定机制
+        self._lock = threading.Lock()
+        
+        # 响应头信息记录
+        self.rate_limit_status: Dict[str, Dict] = {}
+        
+        # 设置日志
+        self.logger = logging.getLogger(f"{__name__}.RateLimitManager")
+        
+        # 指数退避参数
+        self.backoff_base = 1.0  # 基础退避时间
+        self.backoff_max = 300.0  # 最大退避时间（5分钟）
+        self.retry_attempts: Dict[str, int] = defaultdict(int)
+        
+        print(f"🔧 速率限制管理器初始化完成")
+        print(f"  📊 API 等级: {api_tier.value.upper()}")
+        print(f"  🛡️ 安全系数: {safety_factor:.1%}")
+        print(f"  📈 监控状态: {'启用' if enable_monitoring else '禁用'}")
+    
+    def get_rate_limit(self, endpoint: str) -> RateLimit:
+        """获取指定端点的速率限制配置"""
+        limits = self.RATE_LIMITS.get(self.api_tier, {})
+        return limits.get(endpoint, RateLimit(1, 15))  # 默认最严格限制
+    
+    def wait_for_rate_limit(self, endpoint: str) -> None:
+        """等待满足速率限制要求"""
+        with self._lock:
+            rate_limit = self.get_rate_limit(endpoint)
+            current_time = time.time()
+            
+            # 清理过期的请求记录
+            self._cleanup_request_history(endpoint, current_time, rate_limit.window_seconds)
+            
+            # 计算当前时间窗口内的请求数
+            recent_requests = len(self.request_history[endpoint])
+            max_requests = int(rate_limit.requests_per_window * self.safety_factor)
+            
+            if recent_requests >= max_requests:
+                # 需要等待
+                if recent_requests > 0:  # 确保有历史记录再访问
+                    oldest_request = self.request_history[endpoint][0]
+                    wait_time = rate_limit.window_seconds - (current_time - oldest_request)
+                    
+                    if wait_time > 0:
+                        print(f"⏳ [{endpoint}] 速率限制：需要等待 {wait_time:.1f} 秒")
+                        print(f"   📊 当前窗口内请求数: {recent_requests}/{max_requests}")
+                        time.sleep(wait_time)
+            
+            # 记录当前请求时间
+            self.request_history[endpoint].append(current_time)
+            
+            if self.enable_monitoring:
+                self._log_request_status(endpoint, rate_limit)
+    
+    def _cleanup_request_history(self, endpoint: str, current_time: float, window_seconds: int) -> None:
+        """清理过期的请求记录"""
+        history = self.request_history[endpoint]
+        cutoff_time = current_time - window_seconds
+        
+        while history and history[0] < cutoff_time:
+            history.popleft()
+    
+    def _log_request_status(self, endpoint: str, rate_limit: RateLimit) -> None:
+        """记录请求状态"""
+        recent_requests = len(self.request_history[endpoint])
+        max_requests = int(rate_limit.requests_per_window * self.safety_factor)
+        
+        print(f"📊 [{endpoint}] 请求状态: {recent_requests}/{max_requests} "f"({rate_limit.window_minutes}分钟窗口)")
+    
+    def handle_rate_limit_response(self, endpoint: str, response_headers: Dict[str, str]) -> None:
+        """处理API响应中的速率限制信息"""
+        if not self.enable_monitoring:
+            return
+        
+        # 解析速率限制响应头
+        rate_info = {
+            'limit': response_headers.get('x-rate-limit-limit'),
+            'remaining': response_headers.get('x-rate-limit-remaining'), 
+            'reset': response_headers.get('x-rate-limit-reset')
+        }
+        
+        self.rate_limit_status[endpoint] = rate_info
+        
+        # 输出速率限制状态
+        if rate_info['remaining']:
+            remaining = int(rate_info['remaining'])
+            if remaining <= 5:
+                print(f"⚠️ [{endpoint}] 剩余请求数较低: {remaining}")
+                if rate_info['reset']:
+                    reset_time = datetime.fromtimestamp(int(rate_info['reset']))
+                    print(f"   🕐 重置时间: {reset_time.strftime('%H:%M:%S')}")
+    
+    def handle_rate_limit_exceeded(self, endpoint: str, retry_after: Optional[int] = None) -> float:
+        """处理速率限制超出，返回等待时间"""
+        self.retry_attempts[endpoint] += 1
+        attempt = self.retry_attempts[endpoint]
+        
+        if retry_after:
+            wait_time = retry_after
+            print(f"🚫 [{endpoint}] API速率限制，服务器要求等待 {wait_time} 秒")
+        else:
+            # 指数退避策略
+            wait_time = min(self.backoff_base * (2 ** (attempt - 1)), self.backoff_max)
+            print(f"🚫 [{endpoint}] 速率限制，指数退避等待 {wait_time:.1f} 秒 (尝试 #{attempt})")
+        
+        print(f"   💡 建议升级到更高等级的API计划以获得更多配额")
+        time.sleep(wait_time)
+        
+        return wait_time
+    
+    def reset_retry_attempts(self, endpoint: str) -> None:
+        """重置重试计数"""
+        if endpoint in self.retry_attempts:
+            self.retry_attempts[endpoint] = 0
+    
+    def get_recommended_delay(self, endpoint: str) -> float:
+        """获取推荐的请求间隔"""
+        rate_limit = self.get_rate_limit(endpoint)
+        base_interval = rate_limit.min_interval
+        
+        # 应用安全系数
+        safe_interval = base_interval / self.safety_factor
+        
+        # 考虑当前重试状态
+        retry_multiplier = 1.0
+        if endpoint in self.retry_attempts and self.retry_attempts[endpoint] > 0:
+            retry_multiplier = 1.5 ** self.retry_attempts[endpoint]
+        
+        return safe_interval * retry_multiplier
+    
+    def print_status_summary(self) -> None:
+        """打印速率限制状态摘要"""
+        print("\n" + "="*50)
+        print("=== 速率限制状态摘要 ===")
+        print("="*50)
+        print(f"API 等级: {self.api_tier.value.upper()}")
+        print(f"安全系数: {self.safety_factor:.1%}")
+        
+        for endpoint, history in self.request_history.items():
+            rate_limit = self.get_rate_limit(endpoint)
+            max_requests = int(rate_limit.requests_per_window * self.safety_factor)
+            recent_requests = len(history)
+            
+            print(f"\n📊 {endpoint}:")
+            print(f"   配额使用: {recent_requests}/{max_requests} ({rate_limit.window_minutes}分钟窗口)")
+            print(f"   推荐间隔: {self.get_recommended_delay(endpoint):.1f}秒")
+            
+            if endpoint in self.rate_limit_status:
+                status = self.rate_limit_status[endpoint]
+                if status.get('remaining'):
+                    print(f"   API剩余: {status['remaining']}")
 
 
 class WordPressPublisher:
@@ -259,18 +481,43 @@ class WordPressPublisher:
 
 
 class TwitterScraper:
+<<<<<<< HEAD
     def __init__(self, bearer_token: str, rate_limit_delay: float = 10.0, 
                  wordpress_config: Optional[Dict] = None):
+=======
+    def __init__(self, bearer_token: str, api_tier: str = 'free', 
+                 safety_factor: float = 0.8, wordpress_config: Optional[Dict] = None):
+>>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
         """
         初始化Twitter爬虫
         
         Args:
             bearer_token: Twitter API v2的Bearer Token
+<<<<<<< HEAD
             rate_limit_delay: API请求间隔时间（秒），默认10秒，建议保持较长间隔避免API限制
+=======
+            api_tier: API 计划等级 ('free', 'basic', 'pro', 'enterprise')
+            safety_factor: 安全系数，降低实际请求频率以避免限制
+>>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
             wordpress_config: WordPress配置字典 {'site_url': str, 'username': str, 'password': str}
         """
         self.client = tweepy.Client(bearer_token=bearer_token)
-        self.rate_limit_delay = rate_limit_delay
+        
+        # 初始化速率限制管理器
+        try:
+            tier_enum = TwitterAPITier(api_tier.lower())
+        except ValueError:
+            print(f"⚠️ 不支持的API等级: {api_tier}，使用默认的 'free' 等级")
+            tier_enum = TwitterAPITier.FREE
+        
+        self.rate_manager = TwitterRateLimitManager(
+            api_tier=tier_enum,
+            safety_factor=safety_factor,
+            enable_monitoring=True
+        )
+        
+        # 旧的属性保持兼容性
+        self.rate_limit_delay = self.rate_manager.get_recommended_delay('get_users_tweets')
         self.last_request_time = 0
         self._request_lock = threading.Lock()
         
@@ -288,20 +535,18 @@ class TwitterScraper:
                 print(f"⚠️ WordPress发布器初始化失败: {str(e)}")
                 self.wp_publisher = None
         
-    def _wait_for_rate_limit(self):
+        # 显示初始化信息
+        print(f"\n🚀 TwitterScraper 初始化完成")
+        print(f"  📊 API 等级: {tier_enum.value.upper()}")
+        print(f"  ⏱️ 推荐间隔: {self.rate_limit_delay:.1f}秒")
+        print(f"  🛡️ 安全系数: {safety_factor:.1%}")
+        
+    def _wait_for_rate_limit(self, endpoint: str = 'get_users_tweets'):
         """
-        确保请求间隔符合频次限制
+        使用新的速率限制管理器
+        保持向后兼容性
         """
-        with self._request_lock:
-            current_time = time.time()
-            time_since_last_request = current_time - self.last_request_time
-            
-            if time_since_last_request < self.rate_limit_delay:
-                sleep_time = self.rate_limit_delay - time_since_last_request
-                print(f"⏳ 频次限制：等待 {sleep_time:.2f} 秒...")
-                time.sleep(sleep_time)
-            
-            self.last_request_time = time.time()
+        self.rate_manager.wait_for_rate_limit(endpoint)
     
     def get_tweets(self, usernames, days: int = 1) -> Dict[str, List[Dict]]:
         """
@@ -325,15 +570,14 @@ class TwitterScraper:
         
         for i, username in enumerate(usernames, 1):
             print(f"\n[{i}/{total_users}] 正在处理用户: @{username}")
-            print(f"⚙️  当前频次限制设置: 每 {self.rate_limit_delay} 秒一次请求")
             
             tweets = self._get_single_user_tweets(username, days)
             all_tweets[username] = tweets
             
             # 处理完一个用户后的额外延迟（避免连续请求）
             if i < total_users:
-                extra_delay = max(0.5, self.rate_limit_delay * 0.5)  # 额外延迟，至少0.5秒
-                print(f"⏱️  用户间延迟: {extra_delay}秒")
+                extra_delay = self.rate_manager.get_recommended_delay('get_users_tweets') * 0.3
+                print(f"⏱️  用户间延迟: {extra_delay:.1f}秒")
                 time.sleep(extra_delay)
         
         return all_tweets
@@ -350,12 +594,17 @@ class TwitterScraper:
             推文列表，每个推文包含详细信息
         """
         try:
-            # 频次限制控制
-            self._wait_for_rate_limit()
+            # 频次限制控制 - 查询用户信息
+            self._wait_for_rate_limit('get_user')
             
             # 获取用户信息
             print(f"🔍 正在查询用户 @{username} 的信息...")
             user_response = self.client.get_user(username=username)
+            
+            # 处理响应头信息
+            if hasattr(user_response, 'headers'):
+                self.rate_manager.handle_rate_limit_response('get_user', user_response.headers)
+            
             if not user_response or not hasattr(user_response, 'data') or not user_response.data:  # type: ignore
                 print(f"用户 @{username} 不存在")
                 return []
@@ -364,18 +613,21 @@ class TwitterScraper:
             user_id = user.id
             print(f"找到用户: {user.name} (@{username})")
             
+            # 重置重试计数（成功获取用户信息）
+            self.rate_manager.reset_retry_attempts('get_user')
+            
             # 计算时间范围（使用一天的开始和结束时间）
             end_time = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
             start_time = (end_time - timedelta(days=days-1)).replace(hour=0, minute=0, second=0, microsecond=0)
             
             print(f"正在获取 {start_time.strftime('%Y-%m-%d %H:%M')} 到 {end_time.strftime('%Y-%m-%d %H:%M')} 的推文...")
             
-            # 频次限制控制（获取推文前再次检查）
-            self._wait_for_rate_limit()
+            # 频次限制控制 - 获取推文
+            self._wait_for_rate_limit('get_users_tweets')
             
             # 获取推文
             print(f"📡 正在请求 @{username} 的推文数据...")
-            tweets = tweepy.Paginator(
+            tweets_response = tweepy.Paginator(
                 self.client.get_users_tweets,
                 id=user_id,
                 start_time=start_time,
@@ -386,8 +638,11 @@ class TwitterScraper:
                 max_results=100
             ).flatten(limit=1000)
             
+            # 处理响应头信息（对于tweepy.Paginator，需要特殊处理）
+            # 注意：tweepy.Paginator可能不直接提供响应头，这里可以优化
+            
             tweet_list = []
-            for tweet in tweets:
+            for tweet in tweets_response:
                 tweet_data = {
                     'id': tweet.id,
                     'text': tweet.text,
@@ -401,21 +656,40 @@ class TwitterScraper:
                 }
                 tweet_list.append(tweet_data)
             
+            # 重置重试计数（成功获取推文）
+            self.rate_manager.reset_retry_attempts('get_users_tweets')
+            
             print(f"✅ 成功获取 {len(tweet_list)} 条推文")
             return tweet_list
             
         except tweepy.TooManyRequests as e:
             print(f"⚠️  API请求频率限制 - {str(e)}")
-            print(f"💡 建议增加延迟时间或稍后再试")
-            print(f"🔄 当前延迟设置: {self.rate_limit_delay}秒")
+            
+            # 获取retry-after头
+            retry_after = None
+            if hasattr(e, 'response') and e.response and hasattr(e.response, 'headers'):
+                retry_after = e.response.headers.get('retry-after')
+                if retry_after:
+                    retry_after = int(retry_after)
+            
+            # 使用新的限制处理方法
+            wait_time = self.rate_manager.handle_rate_limit_exceeded('get_users_tweets', retry_after)
+            
+            print(f"💡 建议：")
+            print(f"   - 升级到更高等级的API计划")
+            print(f"   - 增加safety_factor参数降低请求频率")
+            print(f"   - 当前配置: {self.rate_manager.api_tier.value.upper()} 计划")
+            
             return []
+            
         except tweepy.Unauthorized as e:
             print(f"🔐 API认证失败 - {str(e)}")
             print("💡 请检查Bearer Token是否正确")
             return []
+            
         except Exception as e:
             print(f"❌ 获取推文时发生错误: {str(e)}")
-            print(f"🔄 当前延迟设置: {self.rate_limit_delay}秒")
+            print(f"🔄 当前配置: {self.rate_manager.api_tier.value.upper()} 计划")
             return []
     
     def save_tweets(self, tweets_data, filename_prefix: str = 'tweets'):
@@ -675,6 +949,15 @@ def main():
     """
     # 配置参数
     BEARER_TOKEN = os.getenv('TWITTER_BEARER_TOKEN')  # 从环境变量获取
+<<<<<<< HEAD
+=======
+    
+    # 新的速率限制配置
+    API_TIER = os.getenv('TWITTER_API_TIER', 'free').lower()  # API等级
+    SAFETY_FACTOR = float(os.getenv('TWITTER_SAFETY_FACTOR', '0.8'))  # 安全系数
+    
+    # 向后兼容的配置（已弃用但仍支持）
+>>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
     RATE_LIMIT_DELAY = float(os.getenv('TWITTER_RATE_DELAY', '10.0'))  # 频次限制延迟（秒），默认10秒
     
     # WordPress配置（可选）
@@ -693,8 +976,20 @@ def main():
     DAYS = 1  # 获取最近几天的推文
     
     print("🐦 Twitter推文爬虫启动")
-    print(f"⚙️  频次限制设置: 每 {RATE_LIMIT_DELAY} 秒一次请求")
-    print(f"📊 环境变量 TWITTER_RATE_DELAY 可调整延迟时间（当前: {RATE_LIMIT_DELAY}s）")
+    print("="*50)
+    print("📊 速率限制配置 (基于官方API文档)")
+    print(f"  🏷️  API等级: {API_TIER.upper()}")
+    print(f"  🛡️  安全系数: {SAFETY_FACTOR:.1%}")
+    print(f"  ⚙️  智能限流: 启用")
+    
+    # 显示向后兼容性信息
+    if os.getenv('TWITTER_RATE_DELAY'):
+        print(f"\n⚠️  检测到旧配置 TWITTER_RATE_DELAY={RATE_LIMIT_DELAY}s")
+        print(f"   新版本使用智能限流，建议移除此配置")
+    
+    print(f"\n🔧 环境变量说明:")
+    print(f"   TWITTER_API_TIER={API_TIER} (free/basic/pro/enterprise)")
+    print(f"   TWITTER_SAFETY_FACTOR={SAFETY_FACTOR} (0.1-1.0, 推荐0.8)")
     
     # WordPress配置检查
     wordpress_config = None
@@ -705,26 +1000,28 @@ def main():
                 'username': WORDPRESS_USERNAME,
                 'password': WORDPRESS_PASSWORD
             }
-            print(f"📝 WordPress发布已启用")
+            print(f"\n📝 WordPress发布已启用")
             print(f"  🌐 站点: {WORDPRESS_SITE_URL}")
             print(f"  👤 用户: {WORDPRESS_USERNAME}")
             print(f"  📝 状态: {WORDPRESS_POST_STATUS}")
             print(f"  📁 分类: {WORDPRESS_CATEGORY}")
         else:
-            print("⚠️ WordPress配置不完整，将跳过WordPress发布")
+            print("\n⚠️ WordPress配置不完整，将跳过WordPress发布")
             print("💡 需要设置: WORDPRESS_SITE_URL, WORDPRESS_USERNAME, WORDPRESS_PASSWORD")
             PUBLISH_TO_WORDPRESS = False
     else:
-        print("📝 WordPress发布已禁用")
+        print("\n📝 WordPress发布已禁用")
     
     if not BEARER_TOKEN:
-        print("错误: 请设置环境变量 TWITTER_BEARER_TOKEN")
+        print("\n" + "="*50)
+        print("❌ 错误: 请设置环境变量 TWITTER_BEARER_TOKEN")
         print("或者直接在代码中设置 BEARER_TOKEN 变量")
-        print("\n获取Twitter API密钥的步骤:")
+        print("\n🔑 获取Twitter API密钥的步骤:")
         print("1. 访问 https://developer.twitter.com/")
         print("2. 创建开发者账号")
         print("3. 创建新应用")
         print("4. 获取Bearer Token")
+<<<<<<< HEAD
         print("\n频次限制配置说明:")
         print("- 设置环境变量TWITTER_RATE_DELAY来调整请求间隔")
         print("- 默认值: 10.0秒 (推荐值，避免API限制，更稳定)")
@@ -738,31 +1035,59 @@ def main():
         print("- WORDPRESS_POST_STATUS=draft  # 文章状态(draft/publish/private)")
         print("- WORDPRESS_CATEGORY=Twitter推文  # WordPress分类")
         print("\n用户配置说明:")
+=======
+        print("\n📊 速率限制配置说明 (新版本):")
+        print("环境变量配置:")
+        print("  export TWITTER_API_TIER=free        # API等级 (free/basic/pro)")
+        print("  export TWITTER_SAFETY_FACTOR=0.8    # 安全系数 (0.1-1.0)")
+        print("\n🎯 不同API等级的限制:")
+        print("  FREE: 1请求/15分钟 (用户推文), 1请求/24小时 (用户信息)")
+        print("  BASIC: 10请求/15分钟 (用户推文), 500请求/24小时 (用户信息)")
+        print("  PRO: 1500请求/15分钟 (用户推文), 300请求/15分钟 (用户信息)")
+        print("\n💡 推荐配置:")
+        print("  - FREE等级: SAFETY_FACTOR=0.8 (更稳定)")
+        print("  - BASIC/PRO等级: SAFETY_FACTOR=0.9 (更高效)")
+        print("\n📝 WordPress配置说明 (可选):")
+        print("  export PUBLISH_TO_WORDPRESS=true")
+        print("  export WORDPRESS_SITE_URL=https://yoursite.com")
+        print("  export WORDPRESS_USERNAME=your_username")
+        print("  export WORDPRESS_PASSWORD=your_password")
+        print("  export WORDPRESS_POST_STATUS=draft")
+        print("  export WORDPRESS_CATEGORY=Twitter推文")
+        print("\n👥 用户配置说明:")
+>>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
         print("请编辑 config/users_config.txt 文件来修改要爬取的用户名列表")
         print("每行一个用户名，以#开头的行为注释")
         return
     
     if not USERNAMES:
-        print("错误: 未找到任何可用的用户名")
+        print("❌ 错误: 未找到任何可用的用户名")
         print("请检查 config/users_config.txt 文件并添加用户名")
         return
     
     # 创建爬虫实例
     scraper = TwitterScraper(
         BEARER_TOKEN, 
-        rate_limit_delay=RATE_LIMIT_DELAY,
+        api_tier=API_TIER,
+        safety_factor=SAFETY_FACTOR,
         wordpress_config=wordpress_config
     )
     
-    # 爬取推文
-    print(f"🎯 目标用户: {', '.join(['@' + u for u in USERNAMES]) if isinstance(USERNAMES, list) else '@' + USERNAMES}")
-    print(f"🕰️ 时间范围: 最近 {DAYS} 天")
+    # 显示目标信息
+    print(f"\n🎯 爬取任务配置:")
+    print(f"  👥 目标用户: {', '.join(['@' + u for u in USERNAMES]) if isinstance(USERNAMES, list) else '@' + USERNAMES}")
+    print(f"  🕰️ 时间范围: 最近 {DAYS} 天")
+    print(f"  📊 用户数量: {len(USERNAMES) if isinstance(USERNAMES, list) else 1}")
     
+    # 爬取推文
     all_tweets = scraper.get_tweets(USERNAMES, DAYS)
     
     if any(tweets for tweets in all_tweets.values()):
         # 显示统计摘要
         scraper.print_summary(all_tweets)
+        
+        # 显示速率限制状态
+        scraper.rate_manager.print_status_summary()
         
         # 保存推文数据
         scraper.save_tweets(all_tweets)
@@ -812,7 +1137,15 @@ def main():
                     print(f"点赞: {tweet['like_count']} | 转发: {tweet['retweet_count']} | 回复: {tweet['reply_count']}")
                     print(f"链接: {tweet['url']}")
     else:
-        print("没有获取到推文数据")
+        print("\n❌ 没有获取到推文数据")
+        print("\n💡 可能的原因:")
+        print("  1. API速率限制过严格 - 尝试降低 SAFETY_FACTOR")
+        print("  2. 用户没有最近的推文")
+        print("  3. API认证问题")
+        print("  4. 网络连接问题")
+        
+        # 显示当前配置建议
+        scraper.rate_manager.print_status_summary()
 
 if __name__ == "__main__":
     main()
