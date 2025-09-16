@@ -481,24 +481,15 @@ class WordPressPublisher:
 
 
 class TwitterScraper:
-<<<<<<< HEAD
-    def __init__(self, bearer_token: str, rate_limit_delay: float = 10.0, 
-                 wordpress_config: Optional[Dict] = None):
-=======
     def __init__(self, bearer_token: str, api_tier: str = 'free', 
                  safety_factor: float = 0.8, wordpress_config: Optional[Dict] = None):
->>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
         """
         初始化Twitter爬虫
         
         Args:
             bearer_token: Twitter API v2的Bearer Token
-<<<<<<< HEAD
-            rate_limit_delay: API请求间隔时间（秒），默认10秒，建议保持较长间隔避免API限制
-=======
             api_tier: API 计划等级 ('free', 'basic', 'pro', 'enterprise')
             safety_factor: 安全系数，降低实际请求频率以避免限制
->>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
             wordpress_config: WordPress配置字典 {'site_url': str, 'username': str, 'password': str}
         """
         self.client = tweepy.Client(bearer_token=bearer_token)
@@ -949,15 +940,12 @@ def main():
     """
     # 配置参数
     BEARER_TOKEN = os.getenv('TWITTER_BEARER_TOKEN')  # 从环境变量获取
-<<<<<<< HEAD
-=======
     
     # 新的速率限制配置
     API_TIER = os.getenv('TWITTER_API_TIER', 'free').lower()  # API等级
     SAFETY_FACTOR = float(os.getenv('TWITTER_SAFETY_FACTOR', '0.8'))  # 安全系数
     
     # 向后兼容的配置（已弃用但仍支持）
->>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
     RATE_LIMIT_DELAY = float(os.getenv('TWITTER_RATE_DELAY', '10.0'))  # 频次限制延迟（秒），默认10秒
     
     # WordPress配置（可选）
@@ -1021,21 +1009,6 @@ def main():
         print("2. 创建开发者账号")
         print("3. 创建新应用")
         print("4. 获取Bearer Token")
-<<<<<<< HEAD
-        print("\n频次限制配置说明:")
-        print("- 设置环境变量TWITTER_RATE_DELAY来调整请求间隔")
-        print("- 默认值: 10.0秒 (推荐值，避免API限制，更稳定)")
-        print("- 最小值: 1.0秒 (更快但可能被限制)")
-        print("- 建议值: 10.0-15.0秒 (最稳定，适合长期运行)")
-        print("\nWordPress配置说明 (可选):")
-        print("- PUBLISH_TO_WORDPRESS=true  # 启用WordPress发布")
-        print("- WORDPRESS_SITE_URL=https://yoursite.com  # WordPress站点URL")
-        print("- WORDPRESS_USERNAME=your_username  # WordPress用户名")
-        print("- WORDPRESS_PASSWORD=your_password  # WordPress密码")
-        print("- WORDPRESS_POST_STATUS=draft  # 文章状态(draft/publish/private)")
-        print("- WORDPRESS_CATEGORY=Twitter推文  # WordPress分类")
-        print("\n用户配置说明:")
-=======
         print("\n📊 速率限制配置说明 (新版本):")
         print("环境变量配置:")
         print("  export TWITTER_API_TIER=free        # API等级 (free/basic/pro)")
@@ -1055,7 +1028,6 @@ def main():
         print("  export WORDPRESS_POST_STATUS=draft")
         print("  export WORDPRESS_CATEGORY=Twitter推文")
         print("\n👥 用户配置说明:")
->>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
         print("请编辑 config/users_config.txt 文件来修改要爬取的用户名列表")
         print("每行一个用户名，以#开头的行为注释")
         return
