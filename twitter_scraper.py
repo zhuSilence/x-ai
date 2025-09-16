@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Twitter推文爬取脚本
-自动爬取指定用户最近一天的推文信息
+自动爬取指定用户最近一天的推文信息，支持WordPress自动发布
+整合所有功能到单一文件
 """
 
 import tweepy
@@ -13,13 +14,254 @@ import os
 import time
 from typing import List, Dict, Optional
 import threading
+import requests
+import base64
+from urllib.parse import urljoin
 
-# 导入WordPress发布器
-try:
-    from wordpress_publisher import WordPressPublisher
-except ImportError:
-    print("⚠️ 无法导入WordPress发布器，WordPress功能将不可用")
-    WordPressPublisher = None
+
+class WordPressPublisher:
+    """WordPress发布器 - 内嵌版本"""
+    
+    def __init__(self, site_url: str, username: str, password: str):
+        self.site_url = site_url.rstrip('/')
+        self.api_url = urljoin(self.site_url + '/', 'wp-json/wp/v2/')
+        self.username = username
+        self.password = password
+        
+        credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+        self.headers = {
+            'Authorization': f'Basic {credentials}',
+            'Content-Type': 'application/json',
+            'User-Agent': 'Twitter-WordPress-Publisher/1.0'
+        }
+    
+    def test_connection(self) -> bool:
+        try:
+            response = requests.get(
+                urljoin(self.api_url, 'users/me'),
+                headers=self.headers,
+                timeout=10
+            )
+            if response.status_code == 200:
+                user_info = response.json()
+                print(f"✅ WordPress连接成功，当前用户: {user_info.get('name', 'Unknown')}")
+                return True
+            else:
+                print(f"❌ WordPress连接失败，状态码: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ WordPress连接测试失败: {str(e)}")
+            return False
+    
+    def create_post(self, title: str, content: str, status: str = 'draft', 
+                   category_ids: Optional[List[int]] = None, tag_ids: Optional[List[int]] = None) -> Optional[Dict]:
+        post_data = {
+            'title': title,
+            'content': content,
+            'status': status,
+            'format': 'standard'
+        }
+        
+        if category_ids:
+            post_data['categories'] = category_ids
+        if tag_ids:
+            post_data['tags'] = tag_ids
+        
+        try:
+            response = requests.post(
+                urljoin(self.api_url, 'posts'),
+                headers=self.headers,
+                json=post_data,
+                timeout=30
+            )
+            
+            if response.status_code == 201:
+                post_info = response.json()
+                print(f"✅ 文章创建成功: {post_info['title']['rendered']}")
+                return post_info
+            else:
+                print(f"❌ 文章创建失败，状态码: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"❌ 创建文章时发生错误: {str(e)}")
+            return None
+    
+    def get_categories(self) -> List[Dict]:
+        try:
+            response = requests.get(
+                urljoin(self.api_url, 'categories'),
+                headers=self.headers,
+                params={'per_page': 100},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                categories = response.json()
+                return categories
+            else:
+                return []
+        except Exception as e:
+            print(f"❌ 获取分类时发生错误: {str(e)}")
+            return []
+    
+    def create_category(self, name: str, description: str = '') -> Optional[Dict]:
+        category_data = {'name': name, 'description': description}
+        
+        try:
+            response = requests.post(
+                urljoin(self.api_url, 'categories'),
+                headers=self.headers,
+                json=category_data,
+                timeout=10
+            )
+            
+            if response.status_code == 201:
+                category_info = response.json()
+                print(f"✅ 分类创建成功: {category_info['name']}")
+                return category_info
+            else:
+                return None
+        except Exception as e:
+            print(f"❌ 创建分类时发生错误: {str(e)}")
+            return None
+    
+    def format_tweet_as_html(self, tweet: Dict, username: str) -> str:
+        html_content = f"""
+        <div class="twitter-post">
+            <div class="tweet-header">
+                <h3>🐦 来自 @{username} 的推文</h3>
+                <p class="tweet-meta">
+                    <strong>发布时间:</strong> {tweet['created_at']}<br>
+                    <strong>原文链接:</strong> <a href="{tweet['url']}" target="_blank">{tweet['url']}</a>
+                </p>
+            </div>
+            
+            <div class="tweet-content">
+                <blockquote>
+                    {tweet['text'].replace(chr(10), '<br>')}
+                </blockquote>
+            </div>
+            
+            <div class="tweet-stats">
+                <p class="engagement-stats">
+                    👍 <strong>{tweet['like_count']:,}</strong> 点赞 | 
+                    🔄 <strong>{tweet['retweet_count']:,}</strong> 转发 | 
+                    💬 <strong>{tweet['reply_count']:,}</strong> 回复 | 
+                    📝 <strong>{tweet['quote_count']:,}</strong> 引用
+                </p>
+            </div>
+            
+            <div class="tweet-footer">
+                <p><small>📱 语言: {tweet.get('language', 'unknown')} | 推文ID: {tweet['id']}</small></p>
+            </div>
+        </div>
+        
+        <style>
+        .twitter-post {{
+            border: 1px solid #e1e8ed;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            background: #f8f9fa;
+        }}
+        .tweet-header h3 {{
+            color: #1da1f2;
+            margin-bottom: 10px;
+        }}
+        .tweet-content blockquote {{
+            font-size: 18px;
+            line-height: 1.6;
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-left: 4px solid #1da1f2;
+            border-radius: 8px;
+        }}
+        .engagement-stats {{
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }}
+        .tweet-meta, .tweet-footer {{
+            color: #657786;
+            font-size: 14px;
+        }}
+        </style>
+        """
+        return html_content
+    
+    def publish_tweets_as_posts(self, tweets_data: Dict[str, List[Dict]], 
+                               post_status: str = 'draft',
+                               category_name: str = 'Twitter推文') -> List[Dict]:
+        results = []
+        
+        # 获取或创建分类
+        categories = self.get_categories()
+        category_id = None
+        
+        for cat in categories:
+            if cat['name'] == category_name:
+                category_id = cat['id']
+                break
+        
+        if not category_id:
+            new_category = self.create_category(category_name, 'Twitter推文自动发布分类')
+            if new_category:
+                category_id = new_category['id']
+        
+        category_ids = [category_id] if category_id else []
+        
+        # 发布每个用户的推文
+        for username, tweets in tweets_data.items():
+            if not tweets:
+                continue
+                
+            print(f"\n📝 正在发布 @{username} 的推文...")
+            
+            for i, tweet in enumerate(tweets):
+                # 创建文章标题
+                title = f"@{username} 的推文 - {tweet['created_at'][:10]}"
+                if len(tweet['text']) > 50:
+                    title += f" - {tweet['text'][:50]}..."
+                else:
+                    title += f" - {tweet['text']}"
+                
+                # 格式化内容
+                content = self.format_tweet_as_html(tweet, username)
+                
+                # 创建文章
+                post_result = self.create_post(
+                    title=title,
+                    content=content,
+                    status=post_status,
+                    category_ids=category_ids
+                )
+                
+                if post_result:
+                    results.append({
+                        'username': username,
+                        'tweet_id': tweet['id'],
+                        'post_id': post_result['id'],
+                        'post_url': post_result['link'],
+                        'status': 'success'
+                    })
+                else:
+                    results.append({
+                        'username': username,
+                        'tweet_id': tweet['id'],
+                        'status': 'failed'
+                    })
+                
+                # 发布间隔，避免过快请求
+                time.sleep(1)
+                
+                # 限制每个用户最多发布的推文数量
+                if i >= 4:  # 每个用户最多发布5条推文
+                    print(f"⚠️ @{username} 推文数量较多，仅发布前5条")
+                    break
+        
+        return results
 
 
 class TwitterScraper:
@@ -40,7 +282,7 @@ class TwitterScraper:
         
         # 初始化WordPress发布器
         self.wp_publisher = None
-        if wordpress_config and WordPressPublisher:
+        if wordpress_config:
             try:
                 self.wp_publisher = WordPressPublisher(
                     wordpress_config['site_url'],
@@ -51,8 +293,6 @@ class TwitterScraper:
             except Exception as e:
                 print(f"⚠️ WordPress发布器初始化失败: {str(e)}")
                 self.wp_publisher = None
-        elif wordpress_config and not WordPressPublisher:
-            print("⚠️ WordPress发布器不可用，请检查wordpress_publisher.py文件")
         
     def _wait_for_rate_limit(self):
         """

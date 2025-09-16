@@ -1,18 +1,19 @@
 [project]
 name = "twitter-scraper"
-version = "0.1.0"
-description = "Twitter推文爬取工具 - 自动爬取指定用户最近推文信息"
-readme = "README_twitter_scraper.md"
+version = "0.2.0"
+description = "Twitter推文爬取工具 - 自动爬取指定用户最近推文信息，支持WordPress发布"
+readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "tweepy>=4.14.0",
     "pandas>=1.5.0",
+    "requests>=2.25.0",
 ]
 authors = [
     {name = "Twitter Scraper", email = "your-email@example.com"}
 ]
 license = {text = "MIT"}
-keywords = ["twitter", "scraper", "social-media", "data-collection"]
+keywords = ["twitter", "scraper", "social-media", "data-collection", "wordpress", "automation"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

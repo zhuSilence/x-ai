@@ -2,11 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 测试代码重构后的模块化结构
+现在所有功能都在单一文件中
 """
 
-def test_modular_imports():
-    """测试模块化导入"""
-    print("🧪 测试模块化导入...")
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def test_integrated_imports():
+    """测试集成式导入"""
+    print("🧪 测试集成式导入...")
     
     # 测试Twitter爬虫导入
     try:
@@ -16,10 +21,10 @@ def test_modular_imports():
         print(f"❌ TwitterScraper 导入失败: {e}")
         return False
     
-    # 测试WordPress发布器导入
+    # 测试WordPress发布器导入（现在是内嵌的）
     try:
-        from wordpress_publisher import WordPressPublisher
-        print("✅ WordPressPublisher 导入成功")
+        from twitter_scraper import WordPressPublisher
+        print("✅ WordPressPublisher 导入成功 (内嵌版本)")
     except ImportError as e:
         print(f"❌ WordPressPublisher 导入失败: {e}")
         return False
@@ -27,12 +32,11 @@ def test_modular_imports():
     return True
 
 def test_functionality_separation():
-    """测试功能分离"""
-    print("\n🔄 测试功能分离...")
+    """测试功能分离（现在集成在一个文件中）"""
+    print("\n🔄 测试功能集成...")
     
     try:
-        from twitter_scraper import TwitterScraper
-        from wordpress_publisher import WordPressPublisher
+        from twitter_scraper import TwitterScraper, WordPressPublisher
         
         # 测试TwitterScraper基本功能
         scraper = TwitterScraper('dummy_token')
@@ -47,13 +51,13 @@ def test_functionality_separation():
                 print(f"  ❌ {method} 方法缺失")
                 return False
         
-        # 测试WordPress发布器基本功能
+        # 测试WordPress发布器基本功能（内嵌版本）
         wp_publisher = WordPressPublisher(
             'https://example.com',
             'test_user', 
             'test_pass'
         )
-        print("✅ WordPressPublisher 创建成功")
+        print("✅ WordPressPublisher 创建成功 (内嵌版本)")
         
         # 测试基本方法存在
         wp_methods = ['test_connection', 'create_post', 'get_categories', 'format_tweet_as_html']
@@ -67,7 +71,7 @@ def test_functionality_separation():
         return True
         
     except Exception as e:
-        print(f"❌ 功能分离测试失败: {e}")
+        print(f"❌ 功能集成测试失败: {e}")
         return False
 
 def test_integration_compatibility():
@@ -159,11 +163,11 @@ def test_file_structure():
 
 def main():
     """主测试函数"""
-    print("🧪 代码重构测试")
+    print("🧪 代码重构测试 (集成式架构)")
     print("=" * 50)
     
     tests = [
-        test_modular_imports,
+        test_integrated_imports,
         test_functionality_separation,
         test_integration_compatibility,
         test_file_structure
@@ -184,11 +188,11 @@ def main():
     if passed == total:
         print("🎉 代码重构成功!")
         print("\n💡 重构优势:")
-        print("  ✅ 模块化结构清晰")
-        print("  ✅ 功能分离完成") 
-        print("  ✅ 保持向后兼容")
+        print("  ✅ 所有功能集成在单一文件")
+        print("  ✅ 保持向后兼容") 
         print("  ✅ 代码更易维护")
-        print("  ✅ 支持独立使用")
+        print("  ✅ 部署更简单")
+        print("  ✅ 消除了模块依赖问题")
     else:
         print("❌ 部分测试失败，需要进一步检查")
     

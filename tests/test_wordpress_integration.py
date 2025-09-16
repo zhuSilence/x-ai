@@ -4,9 +4,9 @@
 Twitter to WordPress 集成测试脚本
 """
 
-import os
 import sys
-sys.path.append('.')
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def test_wordpress_config():
     """测试WordPress配置"""
@@ -44,7 +44,7 @@ def test_wordpress_connection():
     print("=" * 40)
     
     try:
-        from wordpress_publisher import WordPressPublisher
+        from twitter_scraper import WordPressPublisher
         
         wp_config = {
             'site_url': os.getenv('WORDPRESS_SITE_URL'),
