@@ -49,17 +49,21 @@ def test_wordpress_connection() -> WordPressPublisher | None:
     try:
         from twitter_scraper import WordPressPublisher
         
-        wp_config = {
-            'site_url': os.getenv('WORDPRESS_SITE_URL'),
-            'username': os.getenv('WORDPRESS_USERNAME'),
-            'password': os.getenv('WORDPRESS_PASSWORD')
-        }
+        # 获取环境变量，确保不为None
+        site_url = os.getenv('WORDPRESS_SITE_URL')
+        username = os.getenv('WORDPRESS_USERNAME')
+        password = os.getenv('WORDPRESS_PASSWORD')
         
-        print(f"🌐 站点: {wp_config['site_url']}")
-        print(f"👤 用户: {wp_config['username']}")
+        # 检查必需参数是否为None
+        if not site_url or not username or not password:
+            print("❌ 缺少必需的WordPress配置参数")
+            return None
+        
+        print(f"🌐 站点: {site_url}")
+        print(f"👤 用户: {username}")
         print("🔐 密码: ***隐藏***")
         
-        publisher = WordPressPublisher(**wp_config)
+        publisher = WordPressPublisher(site_url, username, password)
         
         print("\n📡 正在测试连接...")
         if publisher.test_connection():
