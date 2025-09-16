@@ -28,7 +28,7 @@ classifiers = [
 ]
 
 [project.scripts]
-twitter-scraper = "twitter_scraper:main"
+twitter-scraper = "src.twitter_scraper:main"
 
 [build-system]
 requires = ["hatchling"]

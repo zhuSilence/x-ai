@@ -4,12 +4,11 @@
 Twitter to WordPress 集成测试脚本
 """
 
-from twitter_scraper import WordPressPublisher
-
-
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.twitter_scraper import WordPressPublisher
 
 def test_wordpress_config():
     """测试WordPress配置"""
@@ -47,7 +46,7 @@ def test_wordpress_connection() -> WordPressPublisher | None:
     print("=" * 40)
     
     try:
-        from twitter_scraper import WordPressPublisher
+        from src.twitter_scraper import WordPressPublisher
         
         # 获取环境变量，确保不为None
         site_url = os.getenv('WORDPRESS_SITE_URL')

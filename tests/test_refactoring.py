@@ -15,7 +15,7 @@ def test_integrated_imports():
     
     # 测试Twitter爬虫导入
     try:
-        from twitter_scraper import TwitterScraper
+        from src.twitter_scraper import TwitterScraper
         print("✅ TwitterScraper 导入成功")
     except ImportError as e:
         print(f"❌ TwitterScraper 导入失败: {e}")
@@ -23,7 +23,7 @@ def test_integrated_imports():
     
     # 测试WordPress发布器导入（现在是内嵌的）
     try:
-        from twitter_scraper import WordPressPublisher
+        from src.twitter_scraper import WordPressPublisher
         print("✅ WordPressPublisher 导入成功 (内嵌版本)")
     except ImportError as e:
         print(f"❌ WordPressPublisher 导入失败: {e}")
@@ -36,7 +36,7 @@ def test_functionality_separation():
     print("\n🔄 测试功能集成...")
     
     try:
-        from twitter_scraper import TwitterScraper, WordPressPublisher
+        from src.twitter_scraper import TwitterScraper, WordPressPublisher
         
         # 测试TwitterScraper基本功能
         scraper = TwitterScraper('dummy_token')
@@ -79,7 +79,7 @@ def test_integration_compatibility():
     print("\n🔗 测试集成兼容性...")
     
     try:
-        from twitter_scraper import TwitterScraper
+        from src.twitter_scraper import TwitterScraper
         
         # 测试WordPress配置集成
         wordpress_config = {

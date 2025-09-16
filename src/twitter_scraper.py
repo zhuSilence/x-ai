@@ -623,12 +623,12 @@ class TwitterScraper:
         
         return results
 
-def load_users_from_config(config_file: str = 'users_config.txt') -> List[str]:
+def load_users_from_config(config_file: str = 'config/users_config.txt') -> List[str]:
     """
     从配置文件中加载用户名列表
     
     Args:
-        config_file: 配置文件路径，默认为'users_config.txt'
+        config_file: 配置文件路径，默认为'config/users_config.txt'
         
     Returns:
         用户名列表
@@ -688,7 +688,7 @@ def main():
     WORDPRESS_CATEGORY = os.getenv('WORDPRESS_CATEGORY', 'Twitter推文')  # WordPress分类
     
     # 从配置文件加载用户名
-    USERNAMES = load_users_from_config('users_config.txt')
+    USERNAMES = load_users_from_config('config/users_config.txt')
     
     DAYS = 1  # 获取最近几天的推文
     
@@ -738,13 +738,13 @@ def main():
         print("- WORDPRESS_POST_STATUS=draft  # 文章状态(draft/publish/private)")
         print("- WORDPRESS_CATEGORY=Twitter推文  # WordPress分类")
         print("\n用户配置说明:")
-        print("请编辑 users_config.txt 文件来修改要爬取的用户名列表")
+        print("请编辑 config/users_config.txt 文件来修改要爬取的用户名列表")
         print("每行一个用户名，以#开头的行为注释")
         return
     
     if not USERNAMES:
         print("错误: 未找到任何可用的用户名")
-        print("请检查 users_config.txt 文件并添加用户名")
+        print("请检查 config/users_config.txt 文件并添加用户名")
         return
     
     # 创建爬虫实例

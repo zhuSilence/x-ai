@@ -25,8 +25,12 @@ x-ai/
 ├── pyproject.toml          # 项目配置和依赖
 ├── uv.lock                 # 锁定的依赖版本
 ├── run.sh                  # 启动脚本
-├── twitter_scraper.py      # 主程序（包含所有功能）
-├── users_config.txt        # 用户配置文件
+├── main.py                 # 主入口脚本
+├── src/                    # 源码目录
+│   ├── __init__.py         # Python包初始化文件
+│   └── twitter_scraper.py  # 主程序（包含所有功能）
+├── config/                 # 配置目录
+│   └── users_config.txt    # 用户配置文件
 ├── tests/                  # 测试目录
 │   ├── test_refactoring.py
 │   └── test_wordpress_integration.py
@@ -61,7 +65,7 @@ uv sync
 uv run twitter-scraper
 
 # 或者
-uv run python twitter_scraper.py
+uv run python main.py
 ```
 
 #### 方式3：传统方式
@@ -112,7 +116,7 @@ BEARER_TOKEN = "你的Bearer Token"  # 替换这里
 
 ### 用户配置
 
-编辑 `users_config.txt` 文件来配置要爬取的用户：
+编辑 `config/users_config.txt` 文件来配置要爬取的用户：
 
 ```
 # Twitter用户名配置文件
@@ -135,7 +139,7 @@ satyanadella
 
 ### 基本使用（仅爬取推文）
 ```bash
-python twitter_scraper.py
+python main.py
 ```
 
 ### 启用WordPress发布
@@ -147,12 +151,12 @@ export WORDPRESS_USERNAME="your_username"
 export WORDPRESS_PASSWORD="your_app_password"
 
 # 运行脚本
-python twitter_scraper.py
+python main.py
 ```
 
 ### 编程调用示例
 ```python
-from twitter_scraper import TwitterScraper
+from src.twitter_scraper import TwitterScraper
 
 # 创建爬虫实例
 scraper = TwitterScraper(

@@ -30,7 +30,7 @@ fi
 # 显示配置信息
 echo "📋 当前配置:"
 echo "- Python版本: $(cat .python-version)"
-echo "- 用户配置文件: users_config.txt"
+echo "- 用户配置文件: config/users_config.txt"
 echo ""
 
 # 运行程序
