@@ -259,14 +259,14 @@ class WordPressPublisher:
 
 
 class TwitterScraper:
-    def __init__(self, bearer_token: str, rate_limit_delay: float = 1.0, 
+    def __init__(self, bearer_token: str, rate_limit_delay: float = 10.0, 
                  wordpress_config: Optional[Dict] = None):
         """
         初始化Twitter爬虫
         
         Args:
             bearer_token: Twitter API v2的Bearer Token
-            rate_limit_delay: API请求间隔时间（秒），默认1秒
+            rate_limit_delay: API请求间隔时间（秒），默认10秒，建议保持较长间隔避免API限制
             wordpress_config: WordPress配置字典 {'site_url': str, 'username': str, 'password': str}
         """
         self.client = tweepy.Client(bearer_token=bearer_token)
@@ -675,7 +675,7 @@ def main():
     """
     # 配置参数
     BEARER_TOKEN = os.getenv('TWITTER_BEARER_TOKEN')  # 从环境变量获取
-    RATE_LIMIT_DELAY = float(os.getenv('TWITTER_RATE_DELAY', '1.0'))  # 频次限制延迟（秒）
+    RATE_LIMIT_DELAY = float(os.getenv('TWITTER_RATE_DELAY', '10.0'))  # 频次限制延迟（秒），默认10秒
     
     # WordPress配置（可选）
     WORDPRESS_SITE_URL = os.getenv('WORDPRESS_SITE_URL')  # WordPress站点URL
@@ -727,9 +727,9 @@ def main():
         print("4. 获取Bearer Token")
         print("\n频次限制配置说明:")
         print("- 设置环境变量TWITTER_RATE_DELAY来调整请求间隔")
-        print("- 默认值: 1.0秒 (推荐值，平衡速度和稳定性)")
-        print("- 最小值: 0.5秒 (更快但可能被限制)")
-        print("- 建议值: 1.5-2.0秒 (更稳定，适合大量用户)")
+        print("- 默认值: 10.0秒 (推荐值，避免API限制，更稳定)")
+        print("- 最小值: 1.0秒 (更快但可能被限制)")
+        print("- 建议值: 10.0-15.0秒 (最稳定，适合长期运行)")
         print("\nWordPress配置说明 (可选):")
         print("- PUBLISH_TO_WORDPRESS=true  # 启用WordPress发布")
         print("- WORDPRESS_SITE_URL=https://yoursite.com  # WordPress站点URL")

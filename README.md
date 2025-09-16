@@ -82,7 +82,7 @@ python twitter_scraper.py
 ```bash
 # Twitter配置
 export TWITTER_BEARER_TOKEN="你的Bearer Token"
-export TWITTER_RATE_DELAY="1.5"  # 可选，默认1.0秒
+export TWITTER_RATE_DELAY="15.0"  # 可选，默认10.0秒
 
 # WordPress配置（可选）
 export PUBLISH_TO_WORDPRESS="true"
@@ -231,21 +231,21 @@ if scraper.wp_publisher:
 
 | 场景 | 建议设置 | 说明 |
 |------|----------|------|
-| 测试/少量用户 | 1.0秒 | 默认设置，快速测试 |
-| 日常使用 | 1.5秒 | 推荐设置，稳定可靠 |
-| 大批量爬取 | 2.0-3.0秒 | 保守设置，避免封禁 |
-| 高频使用 | 2.5秒以上 | 最安全设置 |
+| 测试/少量用户 | 5.0秒 | 快速测试，适度保守 |
+| 日常使用 | 10.0秒 | 推荐设置，稳定可靠 |
+| 大批量爬取 | 15.0-20.0秒 | 保守设置，避免封禁 |
+| 高频使用 | 20.0秒以上 | 最安全设置 |
 
 **环境变量设置：**
 ```bash
 # 快速测试（有风险）
-export TWITTER_RATE_DELAY=0.5
+export TWITTER_RATE_DELAY=5.0
 
 # 标准使用（推荐）
-export TWITTER_RATE_DELAY=1.5
+export TWITTER_RATE_DELAY=10.0
 
 # 保守设置（最稳定）
-export TWITTER_RATE_DELAY=2.5
+export TWITTER_RATE_DELAY=15.0
 ```
 
 ### 2. WordPress自动发布
@@ -381,9 +381,9 @@ uv sync --verbose
 
 ### API限制
 - Twitter API v2有请求频率限制
-- 脚本已内置智能频次控制，默认每秒1次请求
+- 脚本已内置智能频次控制，默认每10秒一次请求
 - 可通过 `TWITTER_RATE_DELAY` 环境变量调整间隔
-- 推荐设置1.5-2.0秒以获得更好的稳定性
+- 推荐设置10.0-15.0秒以获得更好的稳定性
 - 免费账户每月有推文获取限制
 
 ### WordPress发布
@@ -416,17 +416,17 @@ uv sync --verbose
 ### 常见错误
 1. **401 Unauthorized**: 检查Bearer Token是否正确
 2. **403 Forbidden**: 用户可能受保护或不存在
-3. **429 Too Many Requests**: API请求过于频繁，尝试增加 `TWITTER_RATE_DELAY` 值
+3. **429 Too Many Requests**: API请求过于频繁，尝试增加 `TWITTER_RATE_DELAY` 值至15.0或更高
 4. **用户不存在**: 检查用户名是否正确（不包含@符号）
 5. **WordPress连接失败**: 检查站点URL、用户名和密码是否正确
 
 ### 频次限制问题
 如果遇到频次限制错误：
 ```bash
-# 增加延迟时间
-export TWITTER_RATE_DELAY="2.0"
+# 增加延迟时间（新默认推荐）
+export TWITTER_RATE_DELAY="15.0"
 # 或更保守的设置
-export TWITTER_RATE_DELAY="3.0"
+export TWITTER_RATE_DELAY="20.0"
 ```
 
 ### WordPress发布问题

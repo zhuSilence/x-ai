@@ -4,15 +4,23 @@
 # 空行会被忽略
 #
 # 频次限制说明:
-# 脚本已增加自动频次控制，每次API请求间隔1秒
+# 脚本已增加自动频次控制，每次API请求间隔10秒（默认）
 # 可通过环境变量 TWITTER_RATE_DELAY 调整间隔时间(秒)
-# 推荐设置: 1.0-2.0秒，避免被Twitter API限制
+# 推荐设置: 10.0-15.0秒，避免被Twitter API限制
 #
 # 使用方法:
-# export TWITTER_RATE_DELAY=1.5  # 设置1.5秒间隔
-# python twitter_scraper.py
+# export TWITTER_RATE_DELAY=15.0  # 设置15秒间隔（更稳定）
+# python main.py
 
 elonmusk
+karpathy
+sama
+lexfridman
+lennysan
+paulg
+nikitabier
+rrhoover
+
 
 # 可以继续添加更多用户名
 # 例如:
