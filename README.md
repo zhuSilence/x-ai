@@ -1,6 +1,6 @@
 # Twitter推文爬取工具
 
-这是一个用于爬取Twitter指定用户最近推文的Python脚本，支持自动发布到WordPress站点，基于Twitter API v2官方文档实现了智能速率限制管理。
+这是一个用于爬取Twitter指定用户最近推文的Python脚本，支持自动发布到语雀文档，基于Twitter API v2官方文档实现了智能速率限制管理。
 
 ## 🚀 项目特性
 
@@ -13,8 +13,8 @@
 - 📊 **多API等级支持** - Free/Basic/Pro/Enterprise自动适配
 - ⚡ **性能大幅提升** - 最高1350倍效率提升
 - 🛡️ **智能错误处理** - 429错误指数退避策略
-- 📝 WordPress自动发布功能
-- 🎨 精美的HTML格式化推文内容
+- 📝 语雀文档自动发布功能
+- 🎨 支持Markdown和HTML格式的推文内容
 - ⚙️ 灵活的环境变量配置
 - 📦 使用uv进行现代化包管理
 
@@ -36,7 +36,9 @@ x-ai/
 ├── tests/                  # 测试目录
 │   ├── run_tests.py        # 测试套件入口
 │   ├── test_rate_limit_manager.py  # 限流管理器测试
-│   └── test_wordpress_integration.py # WordPress集成测试
+│   ├── test_wordpress_integration.py # WordPress集成测试（已废弃）
+│   ├── test_yuque_publisher.py      # 语雀发布器测试
+│   └── yuque_demo.py               # 语雀功能演示脚本
 └── README.md              # 项目文档（本文件）
 ```
 
@@ -134,13 +136,13 @@ export TWITTER_SAFETY_FACTOR="0.8"    # 安全系数: 0.1-1.0（推荐0.8）
 # ⚠️ 向后兼容配置（仍支持，但建议使用新配置）
 # export TWITTER_RATE_DELAY="15.0"      # 传统固定延迟配置
 
-# WordPress配置（可选）
-export PUBLISH_TO_WORDPRESS="true"
-export WORDPRESS_SITE_URL="https://yoursite.com"
-export WORDPRESS_USERNAME="your_username"
-export WORDPRESS_PASSWORD="your_password"
-export WORDPRESS_POST_STATUS="draft"  # draft/publish/private
-export WORDPRESS_CATEGORY="Twitter推文"
+# 语雀配置（可选）
+export PUBLISH_TO_YUQUE="true"
+export YUQUE_TOKEN="你的语雀Token"
+export YUQUE_NAMESPACE="owner_login/book_slug"  # 知识库命名空间
+export YUQUE_BASE_URL="https://yuque-api.antfin-inc.com"  # API地址
+export YUQUE_DOC_FORMAT="markdown"     # 文档格式: markdown/html
+export YUQUE_DOC_PUBLIC="0"           # 公开性: 0-私密, 1-公开
 ```
 
 #### 方法2: 直接在代码中设置
@@ -157,12 +159,12 @@ BEARER_TOKEN = "你的Bearer Token"  # 替换这里
 3. 创建新的应用
 4. 在"Keys and tokens"页面获取Bearer Token
 
-#### WordPress API配置（可选）
-1. 登录WordPress管理后台
-2. 进入 `用户 > 个人资料`
-3. 滚动到底部找到 `应用密码` 部分
-4. 添加新的应用密码，命名为 "Twitter爬虫"
-5. 复制生成的密码用于配置
+#### 语雀API配置（可选）
+1. 登录语雀账号
+2. 访问 [个人设置 - Token管理](https://www.yuque.com/settings/tokens)
+3. 创建新的Personal Access Token
+4. 复制Token用于配置
+5. 确保对目标知识库有写入权限
 
 ### 用户配置
 
@@ -197,13 +199,12 @@ satyanadella
 python main.py
 ```
 
-### 启用WordPress发布
+### 启用语雀发布
 ```bash
-# 设置WordPress配置
-export PUBLISH_TO_WORDPRESS="true"
-export WORDPRESS_SITE_URL="https://yoursite.com"
-export WORDPRESS_USERNAME="your_username"
-export WORDPRESS_PASSWORD="your_app_password"
+# 设置语雀配置
+export PUBLISH_TO_YUQUE="true"
+export YUQUE_TOKEN="你的语雀Token"
+export YUQUE_NAMESPACE="owner_login/book_slug"
 
 # 运行脚本
 python main.py
@@ -220,10 +221,17 @@ scraper = TwitterScraper(
     safety_factor=0.8       # 安全系数 0.1-1.0
 )
 
-# 或使用传统配置（向后兼容）
-scraper_legacy = TwitterScraper(
+# 配置语雀发布器（可选）
+yuque_config = {
+    'yuque_token': '你的语雀Token',
+    'yuque_namespace': 'owner_login/book_slug',
+    'yuque_base_url': 'https://yuque-api.antfin-inc.com'
+}
+scraper_with_yuque = TwitterScraper(
     bearer_token="你的Bearer Token",
-    rate_limit_delay=15.0   # 固定延迟时间
+    api_tier="free",
+    safety_factor=0.8,
+    wordpress_config=yuque_config  # 复用变量名保持兼容性
 )
 
 # 获取推文（支持单个用户或多个用户）
@@ -238,12 +246,13 @@ scraper.print_summary(all_tweets)
 # 显示速率限制状态（新功能）
 scraper.rate_manager.print_status_summary()
 
-# WordPress发布（如果配置了）
-if scraper.wp_publisher:
-    wp_results = scraper.publish_to_wordpress(
+# 语雀发布（如果配置了）
+if scraper.yuque_publisher:
+    yuque_results = scraper.yuque_publisher.publish_tweets_as_documents(
         all_tweets,
-        post_status='draft',
-        category_name='Twitter推文'
+        doc_format='markdown',
+        public=0,
+        avoid_duplicates=True
     )
 ```
 
@@ -267,8 +276,8 @@ if scraper.wp_publisher:
 - `tweets_multiple_users_YYYYMMDD_HHMMSS.json`: 所有用户推文合并的JSON文件
 - `tweets_用户名_YYYYMMDD_HHMMSS.json`: 每个用户的单独JSON文件
 
-#### WordPress发布文件
-- `wordpress_publish_results_YYYYMMDD_HHMMSS.json`: WordPress发布结果记录
+#### 语雀发布文件
+- `yuque_results_用户名_YYYYMMDD_HHMMSS.json`: 语雀发布结果记录
 
 ### 多用户JSON数据结构
 ```json
@@ -348,28 +357,28 @@ export TWITTER_RATE_DELAY=10.0
 export TWITTER_RATE_DELAY=15.0
 ```
 
-### 3. WordPress自动发布
-- 支持将推文自动发布到WordPress站点
-- 精美的HTML格式化内容
-- 自动创建和管理分类
-- 支持草稿、发布、私有三种状态
+### 3. 语雀文档自动发布
+- 支持将推文自动发布到语雀知识库
+- 支持Markdown和HTML两种格式
+- 自动检测重复文档，避免重复发布
+- 支持私密和公开文档设置
 - 每个用户限制发布数量，避免内容过多
 
-**WordPress配置选项：**
+**语雀配置选项：**
 
 | 环境变量 | 说明 | 示例 | 必需 |
 |---------|------|------|------|
-| `PUBLISH_TO_WORDPRESS` | 是否启用WordPress发布 | `true`/`false` | 是 |
-| `WORDPRESS_SITE_URL` | WordPress站点URL | `https://myblog.com` | 是 |
-| `WORDPRESS_USERNAME` | WordPress用户名 | `admin` | 是 |
-| `WORDPRESS_PASSWORD` | WordPress密码或应用密码 | `your_password` | 是 |
-| `WORDPRESS_POST_STATUS` | 文章发布状态 | `draft`, `publish`, `private` | 否 |
-| `WORDPRESS_CATEGORY` | WordPress分类名称 | 任意字符串 | 否 |
+| `PUBLISH_TO_YUQUE` | 是否启用语雀发布 | `true`/`false` | 是 |
+| `YUQUE_TOKEN` | 语雀API Token | `your_token` | 是 |
+| `YUQUE_NAMESPACE` | 知识库命名空间 | `owner_login/book_slug` | 是 |
+| `YUQUE_BASE_URL` | 语雀API基础URL | `https://yuque-api.antfin-inc.com` | 否 |
+| `YUQUE_DOC_FORMAT` | 文档格式 | `markdown`, `html` | 否 |
+| `YUQUE_DOC_PUBLIC` | 文档公开性 | `0`-私密, `1`-公开 | 否 |
 
-**WordPress认证方式：**
-1. **应用密码（推荐）**: 更安全，在WordPress后台生成
-2. **用户名和密码**: 直接使用账户密码（不推荐生产环境）
-3. **JWT令牌**: 需要插件支持（高级用户）
+**语雀Token获取方式：**
+1. **Personal Access Token（推荐）**: 在语雀设置页面生成
+2. **访问路径**: [语雀设置 - Token管理](https://www.yuque.com/settings/tokens)
+3. **权限要求**: 目标知识库的读写权限
 
 ### 4. 时间范围优化
 - 使用一天的开始和结束时间（00:00:00 - 23:59:59）
@@ -486,11 +495,11 @@ uv sync --verbose
 - 推荐设置10.0-15.0秒以获得更好的稳定性
 - 免费账户每月有推文获取限制
 
-### WordPress发布
-- 需要WordPress站点支持REST API（默认支持）
-- 建议使用应用密码而非账户密码
-- 默认发布为草稿状态，需人工审核
-- 大量发布时注意WordPress服务器性能
+### 语雀发布
+- 需要语雀账号和API Token
+- 需要目标知识库的写入权限
+- 默认创建私密文档
+- 自动避免重复发布相同推文
 
 ### 隐私保护
 - 只能获取公开推文
@@ -498,13 +507,13 @@ uv sync --verbose
 - 请遵守Twitter的使用条款
 
 ### 权限要求
-- WordPress用户需要有发布文章的权限
-- 建议使用编辑者或管理员角色账户
+- 语雀用户需要有目标知识库的写入权限
+- 如果是团队知识库，需要确保用户是成员
 
 ### 安全建议
-- 使用应用密码而非账户密码
-- 定期更换密码
-- 监控WordPress登录日志
+- 妥善保管语雀API Token
+- 定期检查Token使用情况
+- 监控知识库访问日志
 
 ### 内容合规
 - 确保转发内容符合网站政策
@@ -546,12 +555,13 @@ export TWITTER_RATE_DELAY="15.0"
 export TWITTER_RATE_DELAY="20.0"
 ```
 
-### WordPress发布问题
-如果WordPress发布失败：
-1. 检查REST API是否可用：`https://yoursite.com/wp-json/wp/v2/`
-2. 确认用户有发布权限
-3. 尝试使用应用密码
-4. 检查网络连接和防火墙设置
+### 语雀发布问题
+如果语雀发布失败：
+1. 检查Token是否有效：访问 [Token管理页面](https://www.yuque.com/settings/tokens)
+2. 确认对目标知识库有写入权限
+3. 检查知识库命名空间格式是否正确
+4. 验证API地址是否可访问
+5. 查看是否有重复的文档标题
 
 ### 调试建议
 - 确保网络连接正常
@@ -592,7 +602,7 @@ python tests/test_wordpress_integration.py
 ### 测试内容
 - **限流管理器测试**: 验证速率限制管理器功能
 - **功能演示**: 展示不同API等级的配置效果
-- **WordPress集成测试**: 测试WordPress连接和发布功能
+- **语雀发布测试**: 测试语雀连接和文档创建功能
 - **模块化测试**: 确保代码结构和导入正确
 
 ## 🚀 扩展功能
@@ -606,8 +616,9 @@ python tests/test_wordpress_integration.py
 - ✅ 向后兼容的传统频次控制
 - ✅ JSON数据格式存储
 - ✅ 详细的统计报告
-- ✅ WordPress自动发布功能
-- ✅ 精美的HTML内容格式化
+- ✅ 语雀文档自动发布功能
+- ✅ 支持Markdown和HTML格式内容
+- ✅ 自动重复检测和跳过机制
 - ✅ 灵活的环境变量配置
 - ✅ 时间范围优化（按天的起止时间）
 - ✅ 现代化uv包管理
@@ -621,7 +632,7 @@ python tests/test_wordpress_integration.py
 - 添加情感分析功能
 - 支持推文内容翻译
 - 添加邮件通知功能
-- 支持其他CMS平台（Drupal、Joomla）
+- 支持其他文档平台（Notion、飞书文档）
 
 ## 📄 许可证
 
@@ -629,6 +640,6 @@ python tests/test_wordpress_integration.py
 
 ---
 
-*项目最后更新: 2025-09-16*  
+*项目最后更新: 2025-09-17*  
 *Python版本: 3.11*  
 *uv版本: 0.8.17*

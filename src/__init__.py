@@ -4,7 +4,7 @@ X-AI Twitter Scraper Package
 
 from .twitter_scraper import (
     TwitterScraper,
-    WordPressPublisher,
+    YuquePublisher,
     TwitterAPITier,
     RateLimit,
     TwitterRateLimitManager
@@ -13,7 +13,7 @@ from .twitter_scraper import (
 __version__ = "2.0.0"
 __all__ = [
     "TwitterScraper",
-    "WordPressPublisher", 
+    "YuquePublisher", 
     "TwitterAPITier",
     "RateLimit",
     "TwitterRateLimitManager"
