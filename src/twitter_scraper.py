@@ -541,7 +541,8 @@ class TwitterScraper:
     
     def get_tweets(self, usernames, days: int = 1) -> Dict[str, List[Dict]]:
         """
-        获取用户推文
+        获取用户推文（独立处理模式）
+        每个用户获取后立即存储和发布，不等待其他用户
         
         Args:
             usernames: 用户名（字符串）或用户名列表
@@ -557,13 +558,22 @@ class TwitterScraper:
         all_tweets = {}
         total_users = len(usernames)
         
-        print(f"🐦 开始获取 {total_users} 个用户的推文...\n")
+        print(f"🐦 开始获取 {total_users} 个用户的推文...")
+        print("📊 模式: 独立处理（获取后立即存储和发布）")
+        print()
         
         for i, username in enumerate(usernames, 1):
             print(f"\n[{i}/{total_users}] 正在处理用户: @{username}")
+            print("=" * 40)
             
             tweets = self._get_single_user_tweets(username, days)
             all_tweets[username] = tweets
+            
+            # 立即处理当前用户的数据
+            if tweets:
+                self._process_user_tweets_individually(username, tweets)
+            else:
+                print(f"⚠️  @{username} 没有推文数据，跳过存储和发布")
             
             # 处理完一个用户后的额外延迟（避免连续请求）
             if i < total_users:
@@ -572,6 +582,117 @@ class TwitterScraper:
                 time.sleep(extra_delay)
         
         return all_tweets
+    
+    def _process_user_tweets_individually(self, username: str, tweets: List[Dict]):
+        """
+        独立处理单个用户的推文（存储和WordPress发布）
+        
+        Args:
+            username: 用户名
+            tweets: 推文列表
+        """
+        if not tweets:
+            print(f"⚠️  @{username} 没有推文数据，跳过处理")
+            return
+        
+        print(f"\n💾 正在为 @{username} 存储推文数据...")
+        
+        # 为单个用户存储数据
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        user_filename = f"tweets_{username}_{timestamp}.json"
+        
+        try:
+            with open(user_filename, 'w', encoding='utf-8') as f:
+                json.dump(tweets, f, ensure_ascii=False, indent=2)
+            print(f"✅ @{username} 的推文已保存到: {user_filename}")
+        except Exception as e:
+            print(f"❌ @{username} 数据保存失败: {str(e)}")
+            return
+        
+        # 显示单用户统计
+        self._print_user_summary(username, tweets)
+        
+        # 如果启用WordPress发布，立即发布
+        if self.wp_publisher:
+            print(f"\n📝 正在为 @{username} 发布到WordPress...")
+            
+            # 获取WordPress配置（从main函数传递或使用默认值）
+            post_status = os.getenv('WORDPRESS_POST_STATUS', 'draft')
+            category_name = os.getenv('WORDPRESS_CATEGORY', 'Twitter推文')
+            
+            try:
+                # 将单用户数据转换为字典格式供发布方法使用
+                user_tweets_data = {username: tweets}
+                
+                results = self.wp_publisher.publish_tweets_as_posts(
+                    user_tweets_data,
+                    post_status=post_status,
+                    category_name=category_name
+                )
+                
+                if results:
+                    success_count = len([r for r in results if r['status'] == 'success'])
+                    failed_count = len([r for r in results if r['status'] == 'failed'])
+                    
+                    print(f"✅ @{username} WordPress发布结果:")
+                    print(f"   ✅ 成功: {success_count} 篇")
+                    print(f"   ❌ 失败: {failed_count} 篇")
+                    
+                    # 显示成功发布的文章链接
+                    for result in results:
+                        if result['status'] == 'success':
+                            print(f"   🔗 文章: {result['post_url']}")
+                    
+                    # 保存单用户的WordPress发布结果
+                    wp_results_file = f"wordpress_results_{username}_{timestamp}.json"
+                    with open(wp_results_file, 'w', encoding='utf-8') as f:
+                        json.dump(results, f, ensure_ascii=False, indent=2)
+                    print(f"   💾 WordPress发布结果已保存: {wp_results_file}")
+                else:
+                    print(f"⚠️  @{username} WordPress发布未返回结果")
+                    
+            except Exception as e:
+                print(f"❌ @{username} WordPress发布失败: {str(e)}")
+        else:
+            print(f"📝 WordPress发布器未初始化，跳过发布")
+        
+        print(f"\n✅ @{username} 处理完成\n" + "=" * 50)
+    
+    def _print_user_summary(self, username: str, tweets: List[Dict]):
+        """
+        打印单个用户的推文统计摘要
+        
+        Args:
+            username: 用户名
+            tweets: 推文列表
+        """
+        if not tweets:
+            print(f"📊 @{username}: 无推文数据")
+            return
+        
+        total_tweets = len(tweets)
+        total_likes = sum(tweet['like_count'] for tweet in tweets)
+        total_retweets = sum(tweet['retweet_count'] for tweet in tweets)
+        total_replies = sum(tweet['reply_count'] for tweet in tweets)
+        
+        print(f"\n📊 @{username} 的推文统计:")
+        print(f"   📝 推文数: {total_tweets:,}")
+        print(f"   👍 点赞数: {total_likes:,}")
+        print(f"   🔄 转发数: {total_retweets:,}")
+        print(f"   💬 回复数: {total_replies:,}")
+        
+        if total_tweets > 0:
+            print(f"   📈 平均点赞: {total_likes/total_tweets:.1f}")
+            print(f"   📈 平均转发: {total_retweets/total_tweets:.1f}")
+            print(f"   📈 平均回复: {total_replies/total_tweets:.1f}")
+        
+        # 显示最新几条推文预览
+        print(f"\n👀 @{username} 最新推文预览:")
+        for i, tweet in enumerate(tweets[:2], 1):  # 显示最新2条
+            print(f"   [{i}] {tweet['created_at']}")
+            print(f"       {tweet['text'][:80]}...")
+            print(f"       👍 {tweet['like_count']} | 🔄 {tweet['retweet_count']} | 💬 {tweet['reply_count']}")
+            print(f"       🔗 {tweet['url']}")
     
     def _get_single_user_tweets(self, username: str, days: int = 1) -> List[Dict]:
         """
@@ -592,9 +713,7 @@ class TwitterScraper:
             print(f"🔍 正在查询用户 @{username} 的信息...")
             user_response = self.client.get_user(username=username)
             
-            # 处理响应头信息
-            if hasattr(user_response, 'headers'):
-                self.rate_manager.handle_rate_limit_response('get_user', user_response.headers)
+            # 注意：tweepy的Response对象可能不直接提供响应头，这里先跳过处理
             
             if not user_response or not hasattr(user_response, 'data') or not user_response.data:  # type: ignore
                 print(f"用户 @{username} 不存在")
@@ -682,69 +801,6 @@ class TwitterScraper:
             print(f"❌ 获取推文时发生错误: {str(e)}")
             print(f"🔄 当前配置: {self.rate_manager.api_tier.value.upper()} 计划")
             return []
-    
-    def save_tweets(self, tweets_data, filename_prefix: str = 'tweets'):
-        """
-        保存推文数据为JSON格式
-        
-        Args:
-            tweets_data: 推文数据（列表或字典格式）
-            filename_prefix: 文件名前缀
-        """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # 统一处理数据格式
-        if isinstance(tweets_data, list):
-            # 单用户数据转换为字典格式
-            tweets_data = {'tweets': tweets_data}
-            is_single_user = True
-        else:
-            is_single_user = False
-        
-        if not any(tweets for tweets in tweets_data.values()):
-            print("没有推文数据可保存")
-            return
-        
-        # 生成合并数据
-        combined_tweets = []
-        for username, tweets in tweets_data.items():
-            for tweet in tweets:
-                tweet_with_user = tweet.copy()
-                if not is_single_user:
-                    tweet_with_user['username'] = username
-                combined_tweets.append(tweet_with_user)
-        
-        # 按时间排序
-        combined_tweets.sort(key=lambda x: x['created_at'], reverse=True)
-        
-        if is_single_user:
-            filename = f"{filename_prefix}_{timestamp}.json"
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(combined_tweets, f, ensure_ascii=False, indent=2)
-            print(f"📄 JSON文件已保存: {filename}")
-        else:
-            filename = f"{filename_prefix}_multiple_users_{timestamp}.json"
-            output_data = {
-                'timestamp': timestamp,
-                'total_users': len(tweets_data),
-                'total_tweets': len(combined_tweets),
-                'users_data': tweets_data,
-                'combined_tweets': combined_tweets
-            }
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(output_data, f, ensure_ascii=False, indent=2)
-            print(f"📄 详细JSON文件已保存: {filename}")
-        
-        # 为每个用户单独保存JSON文件
-        if not is_single_user:
-            for username, tweets in tweets_data.items():
-                if tweets:
-                    user_filename = f"{filename_prefix}_{username}_{timestamp}.json"
-                    with open(user_filename, 'w', encoding='utf-8') as f:
-                        json.dump(tweets, f, ensure_ascii=False, indent=2)
-            
-            print(f"📁 单独用户JSON文件也已保存")
-    
 
     def print_summary(self, tweets_data):
         """
@@ -822,71 +878,6 @@ class TwitterScraper:
                 print(f"  每推文点赞: {total_likes_all/total_tweets_all:.1f}")
                 print(f"  每推文转发: {total_retweets_all/total_tweets_all:.1f}")
                 print(f"  每推文回复: {total_replies_all/total_tweets_all:.1f}")
-    
-
-    def publish_to_wordpress(self, tweets_data, 
-                           post_status: str = 'draft', 
-                           category_name: str = 'Twitter推文') -> Optional[List[Dict]]:
-        """
-        将获取的推文发布到WordPress
-        
-        Args:
-            tweets_data: 推文数据（列表或字典格式）
-            post_status: 文章发布状态 ('draft', 'publish', 'private')
-            category_name: WordPress分类名称
-            
-        Returns:
-            发布结果列表或None
-        """
-        if not self.wp_publisher:
-            print("❌ WordPress发布器未初始化，无法发布推文")
-            print("💡 请在初始化TwitterScraper时提供wordpress_config参数")
-            return None
-        
-        # 测试WordPress连接
-        if not self.wp_publisher.test_connection():
-            print("❌ WordPress连接测试失败，取消发布")
-            return None
-        
-        print(f"\n🚀 开始将推文发布到WordPress...")
-        print(f"📝 发布状态: {post_status}")
-        print(f"📁 分类名称: {category_name}")
-        
-        # 统一处理数据格式
-        if isinstance(tweets_data, list):
-            # 单用户数据转换为字典格式
-            tweets_data = {'tweets': tweets_data}
-        
-        # 过滤有效的推文数据
-        valid_tweets = {k: v for k, v in tweets_data.items() if v}
-        if not valid_tweets:
-            print("⚠️ 没有有效的推文数据可发布")
-            return []
-        
-        # 发布推文
-        results = self.wp_publisher.publish_tweets_as_posts(
-            valid_tweets, 
-            post_status=post_status, 
-            category_name=category_name
-        )
-        
-        # 统计发布结果
-        success_count = len([r for r in results if r['status'] == 'success'])
-        failed_count = len([r for r in results if r['status'] == 'failed'])
-        
-        print(f"\n📊 WordPress发布统计:")
-        print(f"  ✅ 成功: {success_count} 篇文章")
-        print(f"  ❌ 失败: {failed_count} 篇文章")
-        print(f"  📝 总计: {len(results)} 篇文章")
-        
-        # 显示成功发布的文章链接
-        if success_count > 0:
-            print(f"\n🔗 成功发布的文章:")
-            for result in results:
-                if result['status'] == 'success':
-                    print(f"  - @{result['username']}: {result['post_url']}")
-        
-        return results
 
 def load_users_from_config(config_file: str = 'config/users_config.txt') -> List[str]:
     """
@@ -1051,65 +1042,40 @@ def main():
     print(f"  🕰️ 时间范围: 最近 {DAYS} 天")
     print(f"  📊 用户数量: {len(USERNAMES) if isinstance(USERNAMES, list) else 1}")
     
-    # 爬取推文
+    # 爬取推文（使用独立处理模式）
     all_tweets = scraper.get_tweets(USERNAMES, DAYS)
     
     if any(tweets for tweets in all_tweets.values()):
-        # 显示统计摘要
+        print(f"\n" + "=" * 60)
+        print("🎉 所有用户处理完成!")
+        print("=" * 60)
+        
+        # 显示总体统计摘要
         scraper.print_summary(all_tweets)
         
         # 显示速率限制状态
         scraper.rate_manager.print_status_summary()
         
-        # 保存推文数据
-        scraper.save_tweets(all_tweets)
+        print(f"\n💾 数据存储: 每个用户已独立保存JSON文件")
+        if scraper.wp_publisher:
+            print(f"📝 WordPress发布: 每个用户已独立发布")
+            print(f"💾 WordPress结果: 每个用户已独立保存结果文件")
+        else:
+            print(f"📝 WordPress发布: 未启用")
         
-        # WordPress发布（如果启用）
-        if PUBLISH_TO_WORDPRESS and scraper.wp_publisher:
-            wp_results = scraper.publish_to_wordpress(
-                all_tweets,
-                post_status=WORDPRESS_POST_STATUS,
-                category_name=WORDPRESS_CATEGORY
-            )
-            
-            if wp_results:
-                # 保存WordPress发布结果
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                wp_results_file = f"wordpress_publish_results_{timestamp}.json"
-                with open(wp_results_file, 'w', encoding='utf-8') as f:
-                    json.dump(wp_results, f, ensure_ascii=False, indent=2)
-                print(f"💾 WordPress发布结果已保存到: {wp_results_file}")
+        # 显示最新推文预览（简化版，因为已经在单独处理时显示过）
+        processed_users = [username for username, tweets in all_tweets.items() if tweets]
+        failed_users = [username for username, tweets in all_tweets.items() if not tweets]
         
-        # 显示最新推文预览（多用户模式）
-        if isinstance(USERNAMES, list) and len(USERNAMES) > 1:
-            print("\n" + "="*50)
-            print("=== 各用户最新推文预览 ===")
-            print("="*50)
-            
-            for username, tweets in all_tweets.items():
-                if tweets:
-                    print(f"\n🐦 @{username} 的最新推文:")
-                    for i, tweet in enumerate(tweets[:2], 1):  # 显示每个用户最新2条
-                        print(f"  [{i}] {tweet['created_at']}")
-                        print(f"      {tweet['text'][:80]}...")
-                        print(f"      👍 {tweet['like_count']} | 🔄 {tweet['retweet_count']} | 💬 {tweet['reply_count']}")
-                        print(f"      🔗 {tweet['url']}")
-                else:
-                    print(f"\n❌ @{username}: 未获取到推文数据")
-        elif isinstance(USERNAMES, str) or len(USERNAMES) == 1:
-            # 单用户模式预览
-            username = USERNAMES if isinstance(USERNAMES, str) else USERNAMES[0]
-            tweets = all_tweets.get(username, [])
-            if tweets:
-                print("\n=== 最新推文预览 ===")
-                for i, tweet in enumerate(tweets[:3]):
-                    print(f"\n推文 {i+1}:")
-                    print(f"时间: {tweet['created_at']}")
-                    print(f"内容: {tweet['text'][:100]}...")
-                    print(f"点赞: {tweet['like_count']} | 转发: {tweet['retweet_count']} | 回复: {tweet['reply_count']}")
-                    print(f"链接: {tweet['url']}")
+        if processed_users:
+            print(f"\n✅ 成功处理的用户 ({len(processed_users)}个): {', '.join(['@' + u for u in processed_users])}")
+        
+        if failed_users:
+            print(f"\n❌ 处理失败的用户 ({len(failed_users)}个): {', '.join(['@' + u for u in failed_users])}")
     else:
-        print("\n❌ 没有获取到推文数据")
+        print("\n" + "=" * 60)
+        print("❌ 没有获取到任何推文数据")
+        print("=" * 60)
         print("\n💡 可能的原因:")
         print("  1. API速率限制过严格 - 尝试降低 SAFETY_FACTOR")
         print("  2. 用户没有最近的推文")
@@ -1118,6 +1084,7 @@ def main():
         
         # 显示当前配置建议
         scraper.rate_manager.print_status_summary()
+
 
 if __name__ == "__main__":
     main()

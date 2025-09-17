@@ -126,9 +126,6 @@ python twitter_scraper.py
 ```bash
 # Twitter配置
 export TWITTER_BEARER_TOKEN="你的Bearer Token"
-<<<<<<< HEAD
-export TWITTER_RATE_DELAY="15.0"  # 可选，默认10.0秒
-=======
 
 # 🚀 新版本智能限流配置（推荐）
 export TWITTER_API_TIER="free"        # API等级: free/basic/pro/enterprise
@@ -136,7 +133,6 @@ export TWITTER_SAFETY_FACTOR="0.8"    # 安全系数: 0.1-1.0（推荐0.8）
 
 # ⚠️ 向后兼容配置（仍支持，但建议使用新配置）
 # export TWITTER_RATE_DELAY="15.0"      # 传统固定延迟配置
->>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
 
 # WordPress配置（可选）
 export PUBLISH_TO_WORDPRESS="true"
@@ -520,14 +516,10 @@ uv sync --verbose
 ### 常见错误
 1. **401 Unauthorized**: 检查Bearer Token是否正确
 2. **403 Forbidden**: 用户可能受保护或不存在
-<<<<<<< HEAD
-3. **429 Too Many Requests**: API请求过于频繁，尝试增加 `TWITTER_RATE_DELAY` 值至15.0或更高
-=======
 3. **429 Too Many Requests**: API请求过于频繁
    - 新版本：尝试降低 `TWITTER_SAFETY_FACTOR` 至 0.6-0.7
    - 或者升级到更高等级的API计划
    - 传统方式：增加 `TWITTER_RATE_DELAY` 值至15.0或更高
->>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
 4. **用户不存在**: 检查用户名是否正确（不包含@符号）
 5. **WordPress连接失败**: 检查站点URL、用户名和密码是否正确
 
@@ -548,11 +540,7 @@ export TWITTER_API_TIER="basic"  # 或 pro
 
 **传统方式（向后兼容）**:
 ```bash
-<<<<<<< HEAD
-# 增加延迟时间（新默认推荐）
-=======
 # 增加延迟时间
->>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
 export TWITTER_RATE_DELAY="15.0"
 # 或更保守的设置
 export TWITTER_RATE_DELAY="20.0"
