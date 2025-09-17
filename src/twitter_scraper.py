@@ -6,7 +6,6 @@ Twitter推文爬取脚本
 """
 
 import tweepy
-import json
 from datetime import datetime, timedelta
 import os
 import time
@@ -731,7 +730,7 @@ class TwitterScraper:
     def get_tweets(self, usernames, days: int = 1) -> Dict[str, List[Dict]]:
         """
         获取用户推文（独立处理模式）
-        每个用户获取后立即存储和发布，不等待其他用户
+        每个用户获取后立即发布到语雀，不等待其他用户
         
         Args:
             usernames: 用户名（字符串）或用户名列表
@@ -748,7 +747,7 @@ class TwitterScraper:
         total_users = len(usernames)
         
         print(f"🐦 开始获取 {total_users} 个用户的推文...")
-        print("📊 模式: 独立处理（获取后立即存储和发布）")
+        print("📊 模式: 独立处理（获取后立即发布到语雀）")
         print()
         
         for i, username in enumerate(usernames, 1):
@@ -762,7 +761,7 @@ class TwitterScraper:
             if tweets:
                 self._process_user_tweets_individually(username, tweets)
             else:
-                print(f"⚠️  @{username} 没有推文数据，跳过存储和发布")
+                print(f"⚠️  @{username} 没有推文数据，跳过发布")
             
             # 处理完一个用户后的额外延迟（避免连续请求）
             if i < total_users:
@@ -774,7 +773,7 @@ class TwitterScraper:
     
     def _process_user_tweets_individually(self, username: str, tweets: List[Dict]):
         """
-        独立处理单个用户的推文（存储和WordPress发布）
+        单独处理单个用户的推文（只发布到语雀）
         
         Args:
             username: 用户名
@@ -782,20 +781,6 @@ class TwitterScraper:
         """
         if not tweets:
             print(f"⚠️  @{username} 没有推文数据，跳过处理")
-            return
-        
-        print(f"\n💾 正在为 @{username} 存储推文数据...")
-        
-        # 为单个用户存储数据
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        user_filename = f"tweets_{username}_{timestamp}.json"
-        
-        try:
-            with open(user_filename, 'w', encoding='utf-8') as f:
-                json.dump(tweets, f, ensure_ascii=False, indent=2)
-            print(f"✅ @{username} 的推文已保存到: {user_filename}")
-        except Exception as e:
-            print(f"❌ @{username} 数据保存失败: {str(e)}")
             return
         
         # 显示单用户统计
@@ -835,12 +820,6 @@ class TwitterScraper:
                     for result in results:
                         if result['status'] == 'success':
                             print(f"   🔗 文档: {result['doc_url']}")
-                    
-                    # 保存单用户的语雀发布结果
-                    yuque_results_file = f"yuque_results_{username}_{timestamp}.json"
-                    with open(yuque_results_file, 'w', encoding='utf-8') as f:
-                        json.dump(results, f, ensure_ascii=False, indent=2)
-                    print(f"   💾 语雀发布结果已保存: {yuque_results_file}")
                 else:
                     print(f"⚠️  @{username} 语雀发布未返回结果")
                     
@@ -1138,9 +1117,9 @@ def main():
     YUQUE_BASE_URL = os.getenv('YUQUE_BASE_URL', 'https://yuque-api.antfin-inc.com')  # 语雀API基础URL
     
     # 语雀发布设置
-    PUBLISH_TO_YUQUE = os.getenv('PUBLISH_TO_YUQUE', 'false').lower() == 'true'
+    PUBLISH_TO_YUQUE = os.getenv('PUBLISH_TO_YUQUE', 'true').lower() == 'true'
     YUQUE_DOC_FORMAT = os.getenv('YUQUE_DOC_FORMAT', 'markdown')  # markdown, html
-    YUQUE_DOC_PUBLIC = int(os.getenv('YUQUE_DOC_PUBLIC', '0'))  # 0-私密, 1-公开
+    YUQUE_DOC_PUBLIC = int(os.getenv('YUQUE_DOC_PUBLIC', '1'))  # 0-私密, 1-公开
     
     # 从配置文件加载用户名
     USERNAMES = load_users_from_config('config/users_config.txt')
@@ -1249,10 +1228,9 @@ def main():
         # 显示速率限制状态
         scraper.rate_manager.print_status_summary()
         
-        print(f"\n💾 数据存储: 每个用户已独立保存JSON文件")
+        print(f"\n📝 处理结果: 已为每个用户单独处理")
         if scraper.yuque_publisher:
-            print(f"📝 语雀发布: 每个用户已独立发布")
-            print(f"💾 语雀结果: 每个用户已独立保存结果文件")
+            print(f"📝 语雀发布: 每个用户已单独发布")
         else:
             print(f"📝 语雀发布: 未启用")
         
