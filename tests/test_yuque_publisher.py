@@ -9,10 +9,11 @@ import os
 import sys
 from datetime import datetime
 
-# 添加src目录到路径
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+# 添加项目根目录到路径
+project_root = os.path.join(os.path.dirname(__file__), '..')
+sys.path.insert(0, project_root)
 
-from twitter_scraper import YuquePublisher
+from src.twitter_scraper import YuquePublisher
 
 
 def test_yuque_connection():

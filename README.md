@@ -37,7 +37,8 @@ x-ai/
 │   ├── run_tests.py        # 测试套件入口
 │   ├── test_rate_limit_manager.py  # 限流管理器测试
 │   ├── test_wordpress_integration.py # WordPress集成测试（已废弃）
-│   └── test_yuque_publisher.py      # 语雀发布器测试
+│   ├── test_yuque_publisher.py      # 语雀发布器测试
+│   └── yuque_demo.py               # 语雀功能演示脚本
 └── README.md              # 项目文档（本文件）
 ```
 

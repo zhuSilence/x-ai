@@ -238,7 +238,6 @@ class TwitterRateLimitManager:
                 if status.get('remaining'):
                     print(f"   API剩余: {status['remaining']}")
 
-
 class YuquePublisher:
     """语雀文档发布器"""
     
@@ -361,7 +360,8 @@ class YuquePublisher:
                 timeout=30
             )
             
-            if response.status_code == 201:
+            # print(response.json())
+            if response.status_code == 200:
                 doc_response = response.json()
                 if 'data' in doc_response:
                     doc_info = doc_response['data']
@@ -495,6 +495,7 @@ class YuquePublisher:
         Returns:
             格式化后的HTML内容
         """
+        # 分离动态内容和静态样式
         html_content = f"""
 <div class="twitter-post">
     <div class="tweet-header">
@@ -529,7 +530,10 @@ class YuquePublisher:
         <p><small>🕐 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</small></p>
     </div>
 </div>
-
+"""
+        
+        # 静态样式部分（避免f-string解析问题）
+        css_styles = """
 <style>
 .twitter-post {
     border: 1px solid #e1e8ed;
@@ -567,8 +571,9 @@ class YuquePublisher:
     font-size: 14px;
 }
 </style>
-        """
-        return html_content
+"""
+        
+        return html_content + css_styles
     
     def publish_tweets_as_documents(self, tweets_data: Dict[str, List[Dict]], 
                                    doc_format: str = 'markdown',
