@@ -239,227 +239,402 @@ class TwitterRateLimitManager:
                     print(f"   API剩余: {status['remaining']}")
 
 
-class WordPressPublisher:
-    """WordPress发布器"""
+class YuquePublisher:
+    """语雀文档发布器"""
     
-    def __init__(self, site_url: str, username: str, password: str):
-        self.site_url = site_url.rstrip('/')
-        self.api_url = urljoin(self.site_url + '/', 'wp-json/wp/v2/')
-        self.username = username
-        self.password = password
+    def __init__(self, token: str, namespace: str, base_url: str = "https://yuque-api.antfin-inc.com"):
+        """
+        初始化语雀发布器
         
-        credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+        Args:
+            token: 语雀API Token
+            namespace: 知识库命名空间，格式如 'group_login/book_slug' 或 'user_login/book_slug'
+            base_url: 语雀API基础URL，默认为线上地址
+        """
+        self.token = token
+        self.namespace = namespace
+        self.base_url = base_url.rstrip('/')
+        self.api_url = f"{self.base_url}/api/v2/"
+        
         self.headers = {
-            'Authorization': f'Basic {credentials}',
-            'Content-Type': 'application/json',
-            'User-Agent': 'Twitter-WordPress-Publisher/1.0'
+            'User-Agent': 'Twitter-Yuque-Publisher/1.0',
+            'X-Auth-Token': token,
+            'Content-Type': 'application/json'
         }
+        
+        # 解析命名空间
+        if '/' in namespace:
+            self.owner_login, self.book_slug = namespace.split('/', 1)
+        else:
+            raise ValueError("命名空间格式错误，应为 'owner_login/book_slug'")
     
     def test_connection(self) -> bool:
+        """测试API连接和权限"""
         try:
+            # 测试用户信息
             response = requests.get(
-                urljoin(self.api_url, 'users/me'),
+                f"{self.api_url}user",
                 headers=self.headers,
                 timeout=10
             )
+            
             if response.status_code == 200:
-                user_info = response.json()
-                print(f"✅ WordPress连接成功，当前用户: {user_info.get('name', 'Unknown')}")
-                return True
+                user_data = response.json()
+                if 'data' in user_data:
+                    user_info = user_data['data']
+                    print(f"✅ 语雀连接成功，当前用户: {user_info.get('name', 'Unknown')} (@{user_info.get('login', 'unknown')})")
+                    
+                    # 测试知识库访问权限
+                    return self._test_repo_access()
+                else:
+                    print(f"❌ 语雀API响应格式异常")
+                    return False
+            elif response.status_code == 401:
+                print(f"❌ 语雀Token认证失败，请检查Token是否正确")
+                return False
             else:
-                print(f"❌ WordPress连接失败，状态码: {response.status_code}")
+                print(f"❌ 语雀连接失败，状态码: {response.status_code}")
+                print(f"   响应内容: {response.text[:200]}")
                 return False
         except Exception as e:
-            print(f"❌ WordPress连接测试失败: {str(e)}")
+            print(f"❌ 语雀连接测试失败: {str(e)}")
             return False
     
-    def create_post(self, title: str, content: str, status: str = 'draft', 
-                   category_ids: Optional[List[int]] = None, tag_ids: Optional[List[int]] = None) -> Optional[Dict]:
-        post_data: Dict[str, Union[str, List[int]]] = {
+    def _test_repo_access(self) -> bool:
+        """测试知识库访问权限"""
+        try:
+            response = requests.get(
+                f"{self.api_url}repos/{self.namespace}",
+                headers=self.headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                repo_data = response.json()
+                if 'data' in repo_data:
+                    repo_info = repo_data['data']
+                    print(f"✅ 知识库访问正常: {repo_info.get('name', 'Unknown')}")
+                    return True
+                else:
+                    print(f"❌ 知识库响应格式异常")
+                    return False
+            elif response.status_code == 404:
+                print(f"❌ 知识库不存在或无访问权限: {self.namespace}")
+                return False
+            else:
+                print(f"❌ 知识库访问失败，状态码: {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ 知识库访问测试失败: {str(e)}")
+            return False
+    
+    def create_document(self, title: str, body: str, slug: Optional[str] = None, 
+                       format_type: str = 'markdown', public: int = 0) -> Optional[Dict]:
+        """
+        创建语雀文档
+        
+        Args:
+            title: 文档标题
+            body: 文档内容
+            slug: 文档路径（可选，不填会自动生成）
+            format_type: 文档格式，支持 'markdown', 'html', 'lake'
+            public: 公开状态，0-私密，1-公开
+            
+        Returns:
+            创建成功返回文档信息，失败返回None
+        """
+        doc_data = {
             'title': title,
-            'content': content,
-            'status': status,
-            'format': 'standard'
+            'body': body,
+            'format': format_type,
+            'public': public
         }
         
-        if category_ids:
-            post_data['categories'] = category_ids
-        if tag_ids:
-            post_data['tags'] = tag_ids
+        if slug:
+            doc_data['slug'] = slug
         
         try:
             response = requests.post(
-                urljoin(self.api_url, 'posts'),
+                f"{self.api_url}repos/{self.namespace}/docs",
                 headers=self.headers,
-                json=post_data,
+                json=doc_data,
                 timeout=30
             )
             
             if response.status_code == 201:
-                post_info = response.json()
-                print(f"✅ 文章创建成功: {post_info['title']['rendered']}")
-                return post_info
+                doc_response = response.json()
+                if 'data' in doc_response:
+                    doc_info = doc_response['data']
+                    print(f"✅ 语雀文档创建成功: {doc_info.get('title', 'Unknown')}")
+                    return doc_info
+                else:
+                    print(f"❌ 语雀文档创建响应格式异常")
+                    return None
             else:
-                print(f"❌ 文章创建失败，状态码: {response.status_code}")
+                error_info = ""
+                try:
+                    error_data = response.json()
+                    if 'message' in error_data:
+                        error_info = f" - {error_data['message']}"
+                except:
+                    pass
+                    
+                print(f"❌ 语雀文档创建失败，状态码: {response.status_code}{error_info}")
+                if response.status_code == 422:
+                    print(f"   💡 提示: 请检查文档标题是否重复或参数格式是否正确")
                 return None
         except Exception as e:
-            print(f"❌ 创建文章时发生错误: {str(e)}")
+            print(f"❌ 创建语雀文档时发生错误: {str(e)}")
             return None
     
-    def get_categories(self) -> List[Dict]:
+    def get_documents(self, offset: int = 0) -> List[Dict]:
+        """
+        获取知识库文档列表
+        
+        Args:
+            offset: 偏移量，用于分页
+            
+        Returns:
+            文档列表
+        """
         try:
+            params = {'offset': offset}
             response = requests.get(
-                urljoin(self.api_url, 'categories'),
+                f"{self.api_url}repos/{self.namespace}/docs",
                 headers=self.headers,
-                params={'per_page': 100},
+                params=params,
                 timeout=10
             )
             
             if response.status_code == 200:
-                categories = response.json()
-                return categories
+                docs_response = response.json()
+                if 'data' in docs_response:
+                    return docs_response['data']
+                else:
+                    return []
             else:
+                print(f"❌ 获取文档列表失败，状态码: {response.status_code}")
                 return []
         except Exception as e:
-            print(f"❌ 获取分类时发生错误: {str(e)}")
+            print(f"❌ 获取文档列表时发生错误: {str(e)}")
             return []
     
-    def create_category(self, name: str, description: str = '') -> Optional[Dict]:
-        category_data = {'name': name, 'description': description}
+    def check_document_exists(self, title: str) -> bool:
+        """
+        检查指定标题的文档是否已存在
         
-        try:
-            response = requests.post(
-                urljoin(self.api_url, 'categories'),
-                headers=self.headers,
-                json=category_data,
-                timeout=10
-            )
+        Args:
+            title: 文档标题
             
-            if response.status_code == 201:
-                category_info = response.json()
-                print(f"✅ 分类创建成功: {category_info['name']}")
-                return category_info
-            else:
-                return None
+        Returns:
+            存在返回True，不存在返回False
+        """
+        try:
+            docs = self.get_documents()
+            for doc in docs:
+                if doc.get('title') == title:
+                    return True
+            return False
         except Exception as e:
-            print(f"❌ 创建分类时发生错误: {str(e)}")
-            return None
+            print(f"❌ 检查文档是否存在时发生错误: {str(e)}")
+            return False
+    
+    def format_tweet_as_markdown(self, tweet: Dict, username: str) -> str:
+        """
+        将推文格式化为Markdown格式，适合语雀文档
+        
+        Args:
+            tweet: 推文数据
+            username: 用户名
+            
+        Returns:
+            格式化后的Markdown内容
+        """
+        # 处理推文内容中的换行符
+        tweet_content = tweet['text'].replace('\n', '\n\n')
+        
+        # 如果推文内容包含链接，处理链接格式
+        # 这里可以进一步优化链接的处理
+        
+        markdown_content = f"""# 🐦 来自 @{username} 的推文
+
+## 📋 推文信息
+
+- **发布时间**: {tweet['created_at']}
+- **原文链接**: [{tweet['url']}]({tweet['url']})
+- **推文ID**: `{tweet['id']}`
+- **语言**: {tweet.get('language', 'unknown')}
+
+## 📝 推文内容
+
+> {tweet_content}
+
+## 📊 互动数据
+
+| 指标 | 数量 |
+|------|------|
+| 👍 点赞 | {tweet['like_count']:,} |
+| 🔄 转发 | {tweet['retweet_count']:,} |
+| 💬 回复 | {tweet['reply_count']:,} |
+| 📝 引用 | {tweet['quote_count']:,} |
+
+---
+
+*通过 Twitter推文爬虫 自动生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+"""
+        return markdown_content
     
     def format_tweet_as_html(self, tweet: Dict, username: str) -> str:
-        html_content = f"""
-        <div class="twitter-post">
-            <div class="tweet-header">
-                <h3>🐦 来自 @{username} 的推文</h3>
-                <p class="tweet-meta">
-                    <strong>发布时间:</strong> {tweet['created_at']}<br>
-                    <strong>原文链接:</strong> <a href="{tweet['url']}" target="_blank">{tweet['url']}</a>
-                </p>
-            </div>
-            
-            <div class="tweet-content">
-                <blockquote>
-                    {tweet['text'].replace(chr(10), '<br>')}
-                </blockquote>
-            </div>
-            
-            <div class="tweet-stats">
-                <p class="engagement-stats">
-                    👍 <strong>{tweet['like_count']:,}</strong> 点赞 | 
-                    🔄 <strong>{tweet['retweet_count']:,}</strong> 转发 | 
-                    💬 <strong>{tweet['reply_count']:,}</strong> 回复 | 
-                    📝 <strong>{tweet['quote_count']:,}</strong> 引用
-                </p>
-            </div>
-            
-            <div class="tweet-footer">
-                <p><small>📱 语言: {tweet.get('language', 'unknown')} | 推文ID: {tweet['id']}</small></p>
-            </div>
-        </div>
+        """
+        将推文格式化为HTML格式（保留兼容性）
         
-        <style>
-        .twitter-post {{
-            border: 1px solid #e1e8ed;
-            border-radius: 12px;
-            padding: 20px;
-            margin: 20px 0;
-            background: #f8f9fa;
-        }}
-        .tweet-header h3 {{
-            color: #1da1f2;
-            margin-bottom: 10px;
-        }}
-        .tweet-content blockquote {{
-            font-size: 18px;
-            line-height: 1.6;
-            margin: 15px 0;
-            padding: 15px;
-            background: white;
-            border-left: 4px solid #1da1f2;
-            border-radius: 8px;
-        }}
-        .engagement-stats {{
-            background: white;
-            padding: 10px;
-            border-radius: 8px;
-            margin: 10px 0;
-        }}
-        .tweet-meta, .tweet-footer {{
-            color: #657786;
-            font-size: 14px;
-        }}
-        </style>
+        Args:
+            tweet: 推文数据
+            username: 用户名
+            
+        Returns:
+            格式化后的HTML内容
+        """
+        html_content = f"""
+<div class="twitter-post">
+    <div class="tweet-header">
+        <h3>🐦 来自 @{username} 的推文</h3>
+        <p class="tweet-meta">
+            <strong>发布时间:</strong> {tweet['created_at']}<br>
+            <strong>原文链接:</strong> <a href="{tweet['url']}" target="_blank">{tweet['url']}</a>
+        </p>
+    </div>
+    
+    <div class="tweet-content">
+        <blockquote>
+            {tweet['text'].replace(chr(10), '<br>')}
+        </blockquote>
+    </div>
+    
+    <div class="tweet-stats">
+        <table class="engagement-stats">
+            <tr>
+                <td>👍 <strong>{tweet['like_count']:,}</strong> 点赞</td>
+                <td>🔄 <strong>{tweet['retweet_count']:,}</strong> 转发</td>
+            </tr>
+            <tr>
+                <td>💬 <strong>{tweet['reply_count']:,}</strong> 回复</td>
+                <td>📝 <strong>{tweet['quote_count']:,}</strong> 引用</td>
+            </tr>
+        </table>
+    </div>
+    
+    <div class="tweet-footer">
+        <p><small>📱 语言: {tweet.get('language', 'unknown')} | 推文ID: {tweet['id']}</small></p>
+        <p><small>🕐 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</small></p>
+    </div>
+</div>
+
+<style>
+.twitter-post {
+    border: 1px solid #e1e8ed;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+    background: #f8f9fa;
+}
+.tweet-header h3 {
+    color: #1da1f2;
+    margin-bottom: 10px;
+}
+.tweet-content blockquote {
+    font-size: 18px;
+    line-height: 1.6;
+    margin: 15px 0;
+    padding: 15px;
+    background: white;
+    border-left: 4px solid #1da1f2;
+    border-radius: 8px;
+}
+.engagement-stats {
+    background: white;
+    padding: 10px;
+    border-radius: 8px;
+    margin: 10px 0;
+    width: 100%;
+}
+.engagement-stats td {
+    padding: 5px 10px;
+    text-align: center;
+}
+.tweet-meta, .tweet-footer {
+    color: #657786;
+    font-size: 14px;
+}
+</style>
         """
         return html_content
     
-    def publish_tweets_as_posts(self, tweets_data: Dict[str, List[Dict]], 
-                               post_status: str = 'draft',
-                               category_name: str = 'Twitter推文') -> List[Dict]:
+    def publish_tweets_as_documents(self, tweets_data: Dict[str, List[Dict]], 
+                                   doc_format: str = 'markdown',
+                                   public: int = 0,
+                                   avoid_duplicates: bool = True) -> List[Dict]:
+        """
+        将推文发布为语雀文档
+        
+        Args:
+            tweets_data: 推文数据字典，键为用户名，值为推文列表
+            doc_format: 文档格式，支持 'markdown', 'html'
+            public: 公开状态，0-私密，1-公开
+            avoid_duplicates: 是否避免重复发布
+            
+        Returns:
+            发布结果列表
+        """
         results = []
-        
-        # 获取或创建分类
-        categories = self.get_categories()
-        category_id = None
-        
-        for cat in categories:
-            if cat['name'] == category_name:
-                category_id = cat['id']
-                break
-        
-        if not category_id:
-            new_category = self.create_category(category_name, 'Twitter推文自动发布分类')
-            if new_category:
-                category_id = new_category['id']
-        
-        category_ids = [category_id] if category_id else []
         
         # 发布每个用户的推文
         for username, tweets in tweets_data.items():
             if not tweets:
                 continue
                 
-            print(f"\n📝 正在发布 @{username} 的推文...")
+            print(f"\n📝 正在发布 @{username} 的推文到语雀...")
             
             for i, tweet in enumerate(tweets):
-                # 创建文章标题
-                title = f"@{username} 的推文 - {tweet['created_at'][:10]}"
+                # 创建文档标题
+                title = f"@{username} 的推文 - {tweet['created_at'][:10]} - {tweet['id'][-8:]}"
                 
-                # 格式化内容
-                content = self.format_tweet_as_html(tweet, username)
-                
-                # 创建文章
-                post_result = self.create_post(
-                    title=title,
-                    content=content,
-                    status=post_status,
-                    category_ids=category_ids
-                )
-                
-                if post_result:
+                # 检查是否重复
+                if avoid_duplicates and self.check_document_exists(title):
+                    print(f"⚠️ 文档已存在，跳过: {title}")
                     results.append({
                         'username': username,
                         'tweet_id': tweet['id'],
-                        'post_id': post_result['id'],
-                        'post_url': post_result['link'],
+                        'status': 'skipped',
+                        'reason': 'document_exists'
+                    })
+                    continue
+                
+                # 格式化内容
+                if doc_format == 'markdown':
+                    content = self.format_tweet_as_markdown(tweet, username)
+                else:
+                    content = self.format_tweet_as_html(tweet, username)
+                
+                # 生成文档路径（可选）
+                slug = f"tweet-{username}-{tweet['id'][-8:]}"
+                
+                # 创建文档
+                doc_result = self.create_document(
+                    title=title,
+                    body=content,
+                    slug=slug,
+                    format_type=doc_format,
+                    public=public
+                )
+                
+                if doc_result:
+                    results.append({
+                        'username': username,
+                        'tweet_id': tweet['id'],
+                        'doc_id': doc_result.get('id'),
+                        'doc_slug': doc_result.get('slug'),
+                        'doc_url': f"{self.base_url}/{self.namespace}/{doc_result.get('slug', '')}",
                         'status': 'success'
                     })
                 else:
@@ -470,7 +645,7 @@ class WordPressPublisher:
                     })
                 
                 # 发布间隔，避免过快请求
-                time.sleep(1)
+                time.sleep(1.5)  # 语雀API可能需要更长间隔
                 
                 # 限制每个用户最多发布的推文数量
                 if i >= 4:  # 每个用户最多发布5条推文
@@ -512,19 +687,28 @@ class TwitterScraper:
         self.last_request_time = 0
         self._request_lock = threading.Lock()
         
-        # 初始化WordPress发布器
-        self.wp_publisher = None
-        if wordpress_config:
+        # 初始化语雀发布器
+        self.yuque_publisher = None
+        if wordpress_config:  # 保持变量名兼容性，但创建语雀发布器
             try:
-                self.wp_publisher = WordPressPublisher(
-                    wordpress_config['site_url'],
-                    wordpress_config['username'],
-                    wordpress_config['password']
-                )
-                print("📝 WordPress发布器初始化成功")
+                # 假设wordpress_config实际包含语雀配置
+                # 用户需要在配置中提供token和namespace
+                if 'yuque_token' in wordpress_config and 'yuque_namespace' in wordpress_config:
+                    self.yuque_publisher = YuquePublisher(
+                        wordpress_config['yuque_token'],
+                        wordpress_config['yuque_namespace'],
+                        wordpress_config.get('yuque_base_url', 'https://yuque-api.antfin-inc.com')
+                    )
+                    print("📝 语雀发布器初始化成功")
+                else:
+                    print("⚠️ 语雀配置不完整，需要yuque_token和yuque_namespace")
+                    self.yuque_publisher = None
             except Exception as e:
-                print(f"⚠️ WordPress发布器初始化失败: {str(e)}")
-                self.wp_publisher = None
+                print(f"⚠️ 语雀发布器初始化失败: {str(e)}")
+                self.yuque_publisher = None
+        
+        # 保持向后兼容性
+        self.wp_publisher = self.yuque_publisher
         
         # 显示初始化信息
         print(f"\n🚀 TwitterScraper 初始化完成")
@@ -612,49 +796,53 @@ class TwitterScraper:
         # 显示单用户统计
         self._print_user_summary(username, tweets)
         
-        # 如果启用WordPress发布，立即发布
-        if self.wp_publisher:
-            print(f"\n📝 正在为 @{username} 发布到WordPress...")
+        # 如果启用语雀发布，立即发布
+        if self.yuque_publisher:
+            print(f"\n📝 正在为 @{username} 发布到语雀...")
             
-            # 获取WordPress配置（从main函数传递或使用默认值）
-            post_status = os.getenv('WORDPRESS_POST_STATUS', 'draft')
-            category_name = os.getenv('WORDPRESS_CATEGORY', 'Twitter推文')
+            # 获取语雀配置（从环境变量或使用默认值）
+            doc_format = os.getenv('YUQUE_DOC_FORMAT', 'markdown')
+            doc_public = int(os.getenv('YUQUE_DOC_PUBLIC', '0'))
             
             try:
                 # 将单用户数据转换为字典格式供发布方法使用
                 user_tweets_data = {username: tweets}
                 
-                results = self.wp_publisher.publish_tweets_as_posts(
-                    user_tweets_data,
-                    post_status=post_status,
-                    category_name=category_name
-                )
+                if self.yuque_publisher:
+                    results = self.yuque_publisher.publish_tweets_as_documents(
+                        user_tweets_data,
+                        doc_format=doc_format,
+                        public=doc_public,
+                        avoid_duplicates=True
+                    )
+                else:
+                    results = []
                 
                 if results:
                     success_count = len([r for r in results if r['status'] == 'success'])
                     failed_count = len([r for r in results if r['status'] == 'failed'])
                     
-                    print(f"✅ @{username} WordPress发布结果:")
+                    print(f"✅ @{username} 语雀发布结果:")
                     print(f"   ✅ 成功: {success_count} 篇")
                     print(f"   ❌ 失败: {failed_count} 篇")
                     
-                    # 显示成功发布的文章链接
+                    # 显示成功发布的文档链接
                     for result in results:
                         if result['status'] == 'success':
-                            print(f"   🔗 文章: {result['post_url']}")
+                            print(f"   🔗 文档: {result['doc_url']}")
                     
-                    # 保存单用户的WordPress发布结果
-                    wp_results_file = f"wordpress_results_{username}_{timestamp}.json"
-                    with open(wp_results_file, 'w', encoding='utf-8') as f:
+                    # 保存单用户的语雀发布结果
+                    yuque_results_file = f"yuque_results_{username}_{timestamp}.json"
+                    with open(yuque_results_file, 'w', encoding='utf-8') as f:
                         json.dump(results, f, ensure_ascii=False, indent=2)
-                    print(f"   💾 WordPress发布结果已保存: {wp_results_file}")
+                    print(f"   💾 语雀发布结果已保存: {yuque_results_file}")
                 else:
-                    print(f"⚠️  @{username} WordPress发布未返回结果")
+                    print(f"⚠️  @{username} 语雀发布未返回结果")
                     
             except Exception as e:
-                print(f"❌ @{username} WordPress发布失败: {str(e)}")
+                print(f"❌ @{username} 语雀发布失败: {str(e)}")
         else:
-            print(f"📝 WordPress发布器未初始化，跳过发布")
+            print(f"📝 语雀发布器未初始化，跳过发布")
         
         print(f"\n✅ @{username} 处理完成\n" + "=" * 50)
     
@@ -939,15 +1127,15 @@ def main():
     # 向后兼容的配置（已弃用但仍支持）
     RATE_LIMIT_DELAY = float(os.getenv('TWITTER_RATE_DELAY', '10.0'))  # 频次限制延迟（秒），默认10秒
     
-    # WordPress配置（可选）
-    WORDPRESS_SITE_URL = os.getenv('WORDPRESS_SITE_URL')  # WordPress站点URL
-    WORDPRESS_USERNAME = os.getenv('WORDPRESS_USERNAME')  # WordPress用户名
-    WORDPRESS_PASSWORD = os.getenv('WORDPRESS_PASSWORD')  # WordPress密码或应用密码
+    # 语雀配置（可选）
+    YUQUE_TOKEN = os.getenv('YUQUE_TOKEN')  # 语雀API Token
+    YUQUE_NAMESPACE = os.getenv('YUQUE_NAMESPACE')  # 语雀知识库命名空间
+    YUQUE_BASE_URL = os.getenv('YUQUE_BASE_URL', 'https://yuque-api.antfin-inc.com')  # 语雀API基础URL
     
-    # WordPress发布设置
-    PUBLISH_TO_WORDPRESS = os.getenv('PUBLISH_TO_WORDPRESS', 'false').lower() == 'true'
-    WORDPRESS_POST_STATUS = os.getenv('WORDPRESS_POST_STATUS', 'draft')  # draft, publish, private
-    WORDPRESS_CATEGORY = os.getenv('WORDPRESS_CATEGORY', 'Twitter推文')  # WordPress分类
+    # 语雀发布设置
+    PUBLISH_TO_YUQUE = os.getenv('PUBLISH_TO_YUQUE', 'false').lower() == 'true'
+    YUQUE_DOC_FORMAT = os.getenv('YUQUE_DOC_FORMAT', 'markdown')  # markdown, html
+    YUQUE_DOC_PUBLIC = int(os.getenv('YUQUE_DOC_PUBLIC', '0'))  # 0-私密, 1-公开
     
     # 从配置文件加载用户名
     USERNAMES = load_users_from_config('config/users_config.txt')
@@ -970,26 +1158,26 @@ def main():
     print(f"   TWITTER_API_TIER={API_TIER} (free/basic/pro/enterprise)")
     print(f"   TWITTER_SAFETY_FACTOR={SAFETY_FACTOR} (0.1-1.0, 推荐0.8)")
     
-    # WordPress配置检查
-    wordpress_config = None
-    if PUBLISH_TO_WORDPRESS:
-        if WORDPRESS_SITE_URL and WORDPRESS_USERNAME and WORDPRESS_PASSWORD:
-            wordpress_config = {
-                'site_url': WORDPRESS_SITE_URL,
-                'username': WORDPRESS_USERNAME,
-                'password': WORDPRESS_PASSWORD
+    # 语雀配置检查
+    yuque_config = None
+    if PUBLISH_TO_YUQUE:
+        if YUQUE_TOKEN and YUQUE_NAMESPACE:
+            yuque_config = {
+                'yuque_token': YUQUE_TOKEN,
+                'yuque_namespace': YUQUE_NAMESPACE,
+                'yuque_base_url': YUQUE_BASE_URL
             }
-            print(f"\n📝 WordPress发布已启用")
-            print(f"  🌐 站点: {WORDPRESS_SITE_URL}")
-            print(f"  👤 用户: {WORDPRESS_USERNAME}")
-            print(f"  📝 状态: {WORDPRESS_POST_STATUS}")
-            print(f"  📁 分类: {WORDPRESS_CATEGORY}")
+            print(f"\n📝 语雀发布已启用")
+            print(f"  🌐 API地址: {YUQUE_BASE_URL}")
+            print(f"  📚 知识库: {YUQUE_NAMESPACE}")
+            print(f"  📄 格式: {YUQUE_DOC_FORMAT}")
+            print(f"  🔒 公开性: {'公开' if YUQUE_DOC_PUBLIC else '私密'}")
         else:
-            print("\n⚠️ WordPress配置不完整，将跳过WordPress发布")
-            print("💡 需要设置: WORDPRESS_SITE_URL, WORDPRESS_USERNAME, WORDPRESS_PASSWORD")
-            PUBLISH_TO_WORDPRESS = False
+            print("\n⚠️ 语雀配置不完整，将跳过语雀发布")
+            print("💡 需要设置: YUQUE_TOKEN, YUQUE_NAMESPACE")
+            PUBLISH_TO_YUQUE = False
     else:
-        print("\n📝 WordPress发布已禁用")
+        print("\n📝 语雀发布已禁用")
     
     if not BEARER_TOKEN:
         print("\n" + "="*50)
@@ -1011,13 +1199,13 @@ def main():
         print("\n💡 推荐配置:")
         print("  - FREE等级: SAFETY_FACTOR=0.8 (更稳定)")
         print("  - BASIC/PRO等级: SAFETY_FACTOR=0.9 (更高效)")
-        print("\n📝 WordPress配置说明 (可选):")
-        print("  export PUBLISH_TO_WORDPRESS=true")
-        print("  export WORDPRESS_SITE_URL=https://yoursite.com")
-        print("  export WORDPRESS_USERNAME=your_username")
-        print("  export WORDPRESS_PASSWORD=your_password")
-        print("  export WORDPRESS_POST_STATUS=draft")
-        print("  export WORDPRESS_CATEGORY=Twitter推文")
+        print("\n📝 语雀配置说明 (可选):")
+        print("  export PUBLISH_TO_YUQUE=true")
+        print("  export YUQUE_TOKEN=your_yuque_token")
+        print("  export YUQUE_NAMESPACE=owner_login/book_slug")
+        print("  export YUQUE_BASE_URL=https://yuque-api.antfin-inc.com")
+        print("  export YUQUE_DOC_FORMAT=markdown")
+        print("  export YUQUE_DOC_PUBLIC=0")
         print("\n👥 用户配置说明:")
         print("请编辑 config/users_config.txt 文件来修改要爬取的用户名列表")
         print("每行一个用户名，以#开头的行为注释")
@@ -1033,7 +1221,7 @@ def main():
         BEARER_TOKEN, 
         api_tier=API_TIER,
         safety_factor=SAFETY_FACTOR,
-        wordpress_config=wordpress_config
+        wordpress_config=yuque_config  # 使用语雀配置
     )
     
     # 显示目标信息
@@ -1057,11 +1245,11 @@ def main():
         scraper.rate_manager.print_status_summary()
         
         print(f"\n💾 数据存储: 每个用户已独立保存JSON文件")
-        if scraper.wp_publisher:
-            print(f"📝 WordPress发布: 每个用户已独立发布")
-            print(f"💾 WordPress结果: 每个用户已独立保存结果文件")
+        if scraper.yuque_publisher:
+            print(f"📝 语雀发布: 每个用户已独立发布")
+            print(f"💾 语雀结果: 每个用户已独立保存结果文件")
         else:
-            print(f"📝 WordPress发布: 未启用")
+            print(f"📝 语雀发布: 未启用")
         
         # 显示最新推文预览（简化版，因为已经在单独处理时显示过）
         processed_users = [username for username, tweets in all_tweets.items() if tweets]
