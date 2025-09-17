@@ -3,16 +3,6 @@
 # 以#开头的行为注释，会被忽略
 # 空行会被忽略
 #
-<<<<<<< HEAD
-# 频次限制说明:
-# 脚本已增加自动频次控制，每次API请求间隔10秒（默认）
-# 可通过环境变量 TWITTER_RATE_DELAY 调整间隔时间(秒)
-# 推荐设置: 10.0-15.0秒，避免被Twitter API限制
-#
-# 使用方法:
-# export TWITTER_RATE_DELAY=15.0  # 设置15秒间隔（更稳定）
-# python main.py
-=======
 # 🚀 新版本速率限制说明 (基于官方API文档):
 # 支持智能速率限制管理，自动根据API等级调整请求频率
 #
@@ -31,7 +21,6 @@
 #
 # ⚠️ 向后兼容性:
 # 旧的TWITTER_RATE_DELAY环境变量仍受支持，但建议迁移到新配置
->>>>>>> f3fab32 (docs(config): 更新Twitter请求间隔默认值及建议)
 
 elonmusk
 karpathy
